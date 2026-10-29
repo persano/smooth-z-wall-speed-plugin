@@ -18,11 +18,11 @@
 
 ---
 
-## Setting Location in Slicer
+## OrcaSlicer UI Integration
 
-![Smoothing Wall Speed Along Z Setting Location](resources/images/bambu_studio_setting_preview.jpg)
+![Smoothing Wall Speed Along Z Plugin Tab in OrcaSlicer](resources/images/orcaslicer_plugin_tab_preview.jpg)
 
-In Bambu Studio, the feature is located under **Process** (Global) &rarr; **Advanced** (toggle enabled) &rarr; **Quality** &rarr; **Advanced** &rarr; **`Smoothing wall speed along Z(experimental)`**. OrcaSlicer upstream does not provide this toggle in its GUI, which is why this plugin brings the engine logic to OrcaSlicer.
+The plugin provides a dedicated interactive top-level tab (**`Smooth Z Speed`**) inside OrcaSlicer to configure Simple (1:1 Bambu/Creality) and Advanced modes, visualize the Gaussian kernel, and synchronize settings across slicing sessions.
 
 ---
 
