@@ -27,7 +27,7 @@ permissions:
 
 env:
   # Space-separated globs matching the plugin files to upload (.whl / .py).
-  PLUGIN_FILES: "*.whl"
+  PLUGIN_FILES: "*_win_x86_64.whl *_linux_x86_64.whl *_macosx_arm64.whl"
 
 jobs:
   publish:
