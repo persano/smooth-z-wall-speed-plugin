@@ -38,7 +38,7 @@ def build_wheel(whl_filename: str):
     files[f"{PLUGIN_MODULE}/__init__.py"] = code_data
     files[f"{PLUGIN_MODULE}/{PLUGIN_MODULE}.py"] = code_data
 
-    for fn in ("icon.png", "CHANGELOG.md", ".install_state.json", "README.md"):
+    for fn in ("icon.png", "icon_orcacloud_320x320.png", "CHANGELOG.md", "ORCACLOUD_CHANGELOG.md", "ORCACLOUD_DESCRIPTION.md", ".install_state.json", "README.md"):
         if os.path.exists(fn):
             with open(fn, "rb") as f:
                 files[f"{PLUGIN_MODULE}/{fn}"] = f.read()
@@ -77,8 +77,11 @@ def build_zip(zip_filename: str = f"{PLUGIN_MODULE}_plugin.zip"):
         ".install_state.json",
         "README.md",
         "CHANGELOG.md",
+        "ORCACLOUD_CHANGELOG.md",
+        "ORCACLOUD_DESCRIPTION.md",
         "LICENSE",
         "icon.png",
+        "icon_orcacloud_320x320.png",
     ]
 
     with zipfile.ZipFile(zip_filename, "w", compression=zipfile.ZIP_DEFLATED) as z:

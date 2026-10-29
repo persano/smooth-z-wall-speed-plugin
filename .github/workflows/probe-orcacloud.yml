@@ -1,0 +1,30 @@
+name: Probe OrcaCloud releases
+
+# Read-only: prints the plugin's OrcaCloud releases with id, version and
+# status, so we can see whether a held_for_review release got approved
+# without touching anything.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: List releases
+        run: |
+          set -euo pipefail
+          oidc_token="$(curl -sS -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=orcacloud" | jq -r .value)"
+          curl -sS -H "Authorization: Bearer $oidc_token" \
+            https://api.orcaslicer.com/api/v1/plugin-publish/releases > releases.json
+          echo "bytes: $(wc -c < releases.json)"
+          cat releases.json
+          echo
+          jq -r 'if type == "array" then .[] else .releases[]? end |
+                 [(.id // "no-id"), (.version // "?"), (.status // "live"),
+                  (.scan_status // "-")] | @tsv' releases.json || true

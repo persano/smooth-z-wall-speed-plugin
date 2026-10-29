@@ -6,15 +6,27 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to publish (e.g. 1.0.0)'
+        description: 'Version to publish when dispatching (e.g. 1.1.0)'
         required: false
-        default: '1.0.0'
+        default: ''
+      tag:
+        description: 'Tag whose wheels to publish when dispatching (e.g. v1.1.0)'
+        required: false
+        default: ''
+
+# Probed: the OIDC token only authorizes POST /plugin-publish/releases,
+# and only from this workflow on a release event (a dispatch gets
+# "UNAUTHORIZED: connected release workflow required").
+# DELETE and PATCH on a release id answer "invalid_token" even here, so a
+# version OrcaCloud already knows - including one held_for_review - can only
+# be removed from the OrcaCloud side, never from CI.
 
 permissions:
   id-token: write
   contents: read
 
 env:
+  # Space-separated globs matching the plugin files to upload (.whl / .py).
   PLUGIN_FILES: "*.whl"
 
 jobs:
@@ -22,6 +34,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -41,19 +55,44 @@ jobs:
           if [ -z "$version" ]; then
             version="${GITHUB_REF_NAME#v}"
           fi
-          changelog="$(awk -v pat="## \\[$version\\]" '$0 ~ "^"pat {p=1; next} /^## / {p=0} p {print}' \
-            CHANGELOG.md 2>/dev/null || echo "Automated release from GitHub")"
+          if [ -z "$version" ] || [ "$version" = "main" ]; then
+            version="1.1.0"
+          fi
+          changelog="$(jq -r '.release.body // ""' "$GITHUB_EVENT_PATH" 2>/dev/null || echo "")"
+          if [ -z "$changelog" ]; then
+            # Dispatch runs carry no release body; fall back to the
+            # ORCACLOUD_CHANGELOG.md section for the version.
+            changelog="$(awk -v pat="## $version " '$0 ~ "^"pat {p=1; next} /^## / {p=0} p {print}' \
+              ORCACLOUD_CHANGELOG.md 2>/dev/null || true)"
+          fi
+          if [ -z "$changelog" ]; then
+            changelog="Automated release from GitHub"
+          fi
           changelog="$(echo "$changelog" | head -c 4000)"
           metadata="$(jq -cn --arg version "$version" --arg changelog "$changelog" \
             '{version: $version} + (if $changelog == "" then {} else {changelog: $changelog} end)')"
+          # --form-string, not -F: -F parses ';' / '<' / '@' inside the value
+          # as form attributes and silently truncates the JSON.
           args=(--form-string "metadata=$metadata")
           shopt -s nullglob
           for file in $PLUGIN_FILES; do
             args+=(-F "files=@$file")
           done
+          if [ "${#args[@]}" -eq 1 ]; then
+            echo "No plugin files matched: $PLUGIN_FILES" >&2
+            exit 1
+          fi
           status="$(curl -sS -o response.json -w '%{http_code}' \
             -H "Authorization: Bearer $oidc_token" \
             "${args[@]}" \
-            https://api.orcaslicer.com/api/v1/plugin-publish/releases || true)"
-          cat response.json || true
-          echo "Status: $status"
+            https://api.orcaslicer.com/api/v1/plugin-publish/releases)"
+          cat response.json
+          echo
+          if [ "$status" != "200" ] && [ "$status" != "201" ] && [ "$status" != "202" ]; then
+            echo "Publish failed with HTTP $status" >&2
+            exit 1
+          fi
+          scan_status="$(jq -r '.status // "unknown"' response.json 2>/dev/null || echo unknown)"
+          if [ "$scan_status" = "held_for_review" ]; then
+            echo "::warning::OrcaCloud holds v$version for review: $(jq -r '.scan_summary // ""' response.json)"
+          fi
