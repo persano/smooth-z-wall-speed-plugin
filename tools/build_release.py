@@ -53,7 +53,7 @@ def build_wheel(whl_filename: str):
         "README.md",
         "resources/images/icon.png",
         "resources/images/icon_1024.jpg",
-        "resources/images/creality_print_setting_preview.jpg",
+        "resources/images/bambu_studio_setting_preview.jpg",
     ):
         if os.path.exists(fn):
             with open(fn, "rb") as f:
@@ -100,7 +100,7 @@ def build_zip(zip_filename: str = f"{PLUGIN_MODULE}_plugin.zip"):
         "icon_orcacloud_320x320.jpg",
         "resources/images/icon.png",
         "resources/images/icon_1024.jpg",
-        "resources/images/creality_print_setting_preview.jpg",
+        "resources/images/bambu_studio_setting_preview.jpg",
     ]
 
     with zipfile.ZipFile(zip_filename, "w", compression=zipfile.ZIP_DEFLATED) as z:
