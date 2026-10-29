@@ -3,9 +3,9 @@
 #
 # [tool.orcaslicer.plugin]
 # name = "Smoothing Wall Speed Along Z"
-# description = "Smooths outer wall speed transitions across adjacent Z layers using Bambu Studio and Creality Print Gaussian relaxation algorithm."
+# description = "Smooths outer wall speed transitions across adjacent Z layers. Features Simple (1:1 Bambu/Creality) and Advanced modes."
 # author = "persano"
-# version = "1.1.0"
+# version = "1.2.0"
 # type = "slicing-pipeline"
 # ///
 """Smoothing Wall Speed Along Z Plugin for OrcaSlicer.
@@ -14,8 +14,10 @@ Smooths outer wall speed transitions across adjacent Z layers to eliminate
 speed banding and gloss mismatches on vertical walls caused by abrupt cooling
 slowdowns or overhang transitions.
 
-Directly implements the iterative 1D Gaussian kernel relaxation algorithm from
-Bambu Studio and Creality Print (libslic3r/GCode/Smoothing.cpp).
+Modes:
+- "simple" (default): 1:1 match with Bambu Studio & Creality Print (no tuning required).
+- "advanced": Full control over Gaussian filter radius, kernel window, stop threshold,
+  or linear gradient ramp.
 """
 
 from __future__ import annotations
@@ -33,18 +35,32 @@ except ImportError:
     orca = None
 
 PLUGIN_NAME = "Smoothing Wall Speed Along Z"
-PLUGIN_VERSION = "1.1.0"
+PLUGIN_VERSION = "1.2.0"
+
+# Bambu Studio & Creality Print exact defaults (libslic3r/GCode/Smoothing.cpp)
+BAMBU_CREALITY_DEFAULTS = {
+    "smoothing_mode": "gaussian",
+    "gaussian_radius": 2.0,
+    "gaussian_window_size": 11,
+    "gaussian_stop_threshold_mm_s": 5.0, # 5.0 mm/s max adjacent layer delta
+    "max_steps_count": 1000,
+    "min_outer_wall_speed_mm_s": 10.0,
+    "skip_first_layers": 1,
+    "smooth_overhang_layers": True,
+}
 
 DEFAULT_CONFIG: Dict[str, Any] = {
     "enabled": True,
-    "smoothing_mode": "gaussian",        # "gaussian" (Creality/Bambu 1:1 match) or "gradient"
-    "gaussian_radius": 2.0,              # Gaussian standard deviation / radius r (Bambu/Creality default: 2.0)
-    "gaussian_window_size": 11,          # Kernel window size (Bambu/Creality default: 11)
-    "gaussian_stop_threshold_mm_s": 5.0, # Stop threshold in mm/s between adjacent layers (Bambu/Creality default: 5.0)
-    "max_steps_count": 1000,             # Maximum relaxation steps (Bambu/Creality default: 1000)
-    "max_speed_change_per_mm": 50.0,     # Used when smoothing_mode == "gradient"
+    "mode": "simple",                    # "simple" (zero-config Bambu/Creality match) or "advanced"
+    # --- Advanced options (used when mode == "advanced") ---
+    "smoothing_algorithm": "gaussian",   # "gaussian" or "gradient"
+    "gaussian_radius": 2.0,              # Gaussian standard deviation / radius r
+    "gaussian_window_size": 11,          # Kernel window size
+    "gaussian_stop_threshold_mm_s": 5.0, # Convergence threshold in mm/s
+    "max_steps_count": 1000,             # Maximum relaxation iterations
+    "max_speed_change_per_mm": 50.0,     # For gradient mode: max speed delta mm/s per 1 mm Z
     "min_outer_wall_speed_mm_s": 10.0,   # Floor clamp in mm/s
-    "skip_first_layers": 1,              # Exclude first layers for bed adhesion
+    "skip_first_layers": 1,              # Number of initial layers to leave untouched
     "smooth_overhang_layers": True,      # Factor overhang outer wall slowdowns into Z smoothing
 }
 
@@ -66,7 +82,6 @@ def generate_gaussian_kernel(window_size: int = 11, radius: float = 2.0) -> Tupl
     kernel = []
     total_sum = 0.0
     for x in range(-half_win, half_win + 1):
-        # exp(-x^2 / (2 * r^2)) / (r * sqrt(2 * PI))
         val = math.exp(- (x * x) / (2.0 * radius * radius)) / (radius * math.sqrt(2.0 * math.pi))
         kernel.append(val)
         total_sum += val
@@ -184,7 +199,8 @@ def smooth_gcode_lines(
         "total_layers": 0,
         "smoothed_layers": 0,
         "updated_moves": 0,
-        "mode": cfg.get("smoothing_mode", "gaussian"),
+        "mode": cfg.get("mode", "simple"),
+        "algorithm": "gaussian",
         "steps_converged": 0,
         "skipped_reason": None,
     }
@@ -193,11 +209,31 @@ def smooth_gcode_lines(
         stats["skipped_reason"] = "disabled"
         return lines, stats
 
-    min_speed_mm_s = float(cfg.get("min_outer_wall_speed_mm_s", 10.0))
-    skip_layers = int(cfg.get("skip_first_layers", 1))
-    smooth_overhang = bool(cfg.get("smooth_overhang_layers", True))
-    smoothing_mode = str(cfg.get("smoothing_mode", "gaussian")).lower()
+    is_simple = (str(cfg.get("mode", "simple")).lower() == "simple")
 
+    if is_simple:
+        # In simple mode, lock parameters to exact Bambu Studio & Creality Print constants
+        smoothing_algorithm = "gaussian"
+        win_size = BAMBU_CREALITY_DEFAULTS["gaussian_window_size"]
+        radius = BAMBU_CREALITY_DEFAULTS["gaussian_radius"]
+        stop_thresh_mm_min = BAMBU_CREALITY_DEFAULTS["gaussian_stop_threshold_mm_s"] * 60.0
+        max_steps = BAMBU_CREALITY_DEFAULTS["max_steps_count"]
+        min_speed_mm_s = BAMBU_CREALITY_DEFAULTS["min_outer_wall_speed_mm_s"]
+        skip_layers = BAMBU_CREALITY_DEFAULTS["skip_first_layers"]
+        smooth_overhang = BAMBU_CREALITY_DEFAULTS["smooth_overhang_layers"]
+    else:
+        # Advanced mode: honor custom parameters
+        smoothing_algorithm = str(cfg.get("smoothing_algorithm", "gaussian")).lower()
+        win_size = int(cfg.get("gaussian_window_size", 11))
+        radius = float(cfg.get("gaussian_radius", 2.0))
+        stop_thresh_mm_min = float(cfg.get("gaussian_stop_threshold_mm_s", 5.0)) * 60.0
+        max_steps = int(cfg.get("max_steps_count", 1000))
+        min_speed_mm_s = float(cfg.get("min_outer_wall_speed_mm_s", 10.0))
+        skip_layers = int(cfg.get("skip_first_layers", 1))
+        smooth_overhang = bool(cfg.get("smooth_overhang_layers", True))
+        max_accel_z = float(cfg.get("max_speed_change_per_mm", 50.0))
+
+    stats["algorithm"] = smoothing_algorithm
     min_f = min_speed_mm_s * 60.0
 
     for line in lines[:500]:
@@ -297,12 +333,7 @@ def smooth_gcode_lines(
 
     initial_f = [min(baseline_f[i], constraint_f[i]) for i in range(total_layers)]
 
-    if smoothing_mode == "gaussian":
-        win_size = int(cfg.get("gaussian_window_size", 11))
-        radius = float(cfg.get("gaussian_radius", 2.0))
-        stop_thresh_mm_min = float(cfg.get("gaussian_stop_threshold_mm_s", 5.0)) * 60.0
-        max_steps = int(cfg.get("max_steps_count", 1000))
-
+    if smoothing_algorithm == "gaussian":
         smoothed_f, steps = apply_gaussian_smoothing(
             initial_f,
             skip_layers=skip_layers,
@@ -313,9 +344,7 @@ def smooth_gcode_lines(
         )
         stats["steps_converged"] = steps
     else:
-        max_accel_z = float(cfg.get("max_speed_change_per_mm", 50.0))
         smoothed_f = list(initial_f)
-
         for i in range(skip_layers + 1, total_layers):
             dz = abs(layers[i]["z"] - layers[i - 1]["z"])
             if dz < 1e-4:
@@ -414,9 +443,9 @@ if orca:
             try:
                 stats = smooth_gcode_file(ctx.gcode_path, config=cfg)
                 msg = (
-                    f"{PLUGIN_NAME}: processed {stats['total_layers']} layers, "
+                    f"{PLUGIN_NAME} [{stats['mode'].upper()}]: processed {stats['total_layers']} layers, "
                     f"smoothed {stats['smoothed_layers']} layers ({stats['updated_moves']} moves modified) "
-                    f"using {stats['mode']} mode (converged in {stats.get('steps_converged', 0)} steps)"
+                    f"via {stats['algorithm']} (converged in {stats.get('steps_converged', 0)} steps)"
                 )
                 return orca.ExecutionResult.success(msg)
             except Exception as e:
@@ -439,8 +468,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=f"{PLUGIN_NAME} CLI")
     parser.add_argument("gcode", help="Path to input .gcode file")
     parser.add_argument("-o", "--output", help="Optional output .gcode path (default: in-place)")
-    parser.add_argument("--mode", choices=["gaussian", "gradient"], default="gaussian",
-                        help="Smoothing algorithm (default: gaussian)")
+    parser.add_argument("--mode", choices=["simple", "advanced"], default="simple",
+                        help="Operation mode: 'simple' (Bambu/Creality 1:1 match) or 'advanced'")
+    parser.add_argument("--algorithm", choices=["gaussian", "gradient"], default="gaussian",
+                        help="Advanced mode algorithm (default: gaussian)")
     parser.add_argument("--radius", type=float, default=2.0, help="Gaussian radius r (default: 2.0)")
     parser.add_argument("--window", type=int, default=11, help="Gaussian window size (default: 11)")
     parser.add_argument("--stop-threshold", type=float, default=5.0, help="Stop threshold in mm/s (default: 5.0)")
@@ -450,7 +481,8 @@ if __name__ == "__main__":
 
     cli_config = {
         "enabled": True,
-        "smoothing_mode": args.mode,
+        "mode": args.mode,
+        "smoothing_algorithm": args.algorithm,
         "gaussian_radius": args.radius,
         "gaussian_window_size": args.window,
         "gaussian_stop_threshold_mm_s": args.stop_threshold,

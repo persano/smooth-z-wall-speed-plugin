@@ -8,13 +8,17 @@ When 3D printing complex geometry with overhangs, cooling slowdowns, or small cr
 
 On materials with sensitive sheen (Silk PLA, PETG, ABS, translucent filaments), abrupt speed jumps create visible horizontal bands, gloss variations, and localized bulging lines.
 
-This plugin runs during the slicing post-process phase (`psGCodePostProcess`), evaluating outer wall feedrates layer by layer and applying a continuous 1D Gaussian kernel relaxation across the vertical Z axis.
+This plugin runs during the slicing post-process phase (`psGCodePostProcess`), evaluating outer wall feedrates layer by layer and applying continuous Z-direction speed smoothing.
 
-## What it does
+## Two Operating Modes
 
-- **Eliminates Speed Discontinuities**: Blends outer wall speeds across vertical layers so transitions happen gradually rather than stepping sharply.
+- **Simple Mode (Default — Zero Config)**: Operates identically to Bambu Studio and Creality Print. Uses the exact built-in 1D Gaussian kernel relaxation ($W=11, r=2.0$, stop threshold $5\text{ mm/s}$). Just turn it on and slice.
+- **Advanced Mode**: Unlocks full parameter control for power users wishing to customize the Gaussian radius, kernel window, convergence delta threshold, or use linear gradient ramp limiting.
+
+## Key Features
+
 - **Safe Monotonic Clamping**: Adjacent fast layers are smoothly ramped down towards slower layers. Safe slow speeds required for overhangs or cooling thresholds are never sped up.
-- **1:1 Bambu & Creality Algorithm**: Direct implementation of the iterative 1D Gaussian kernel relaxation ($W=11, r=2.0$, stop threshold $5\text{ mm/s}$) used in Bambu Studio and Creality Print (`libslic3r/GCode/Smoothing.cpp`).
+- **1:1 Bambu & Creality Algorithm**: Direct implementation of the iterative 1D Gaussian kernel relaxation ($W=11, r=2.0$) used in Bambu Studio and Creality Print (`libslic3r/GCode/Smoothing.cpp`).
 - **Selective & Clean**: Inner walls, infill, bridges, and travels keep their exact slicer speeds.
 - **Vase Mode Aware**: Automatically bypasses spiral vase mode prints.
 - **First-Layer Safe**: Leaves initial bed adhesion layers untouched.
@@ -22,17 +26,6 @@ This plugin runs during the slicing post-process phase (`psGCodePostProcess`), e
 
 ## How to use
 
-1. Enable the plugin in OrcaSlicer.
-2. Open **Process** settings -> **Others** -> **Slicing Pipeline Plugin**.
-3. Select **Smoothing Wall Speed Along Z**.
-4. Slice your plate and print normally.
-
-## Configuration
-
-Adjustable under **Plugin Configuration**:
-- `smoothing_mode`: `"gaussian"` (default, 1:1 match) or `"gradient"`.
-- `gaussian_radius`: `2.0` (standard deviation).
-- `gaussian_window_size`: `11` (kernel window).
-- `gaussian_stop_threshold_mm_s`: `5.0` (convergence threshold in mm/s).
-- `min_outer_wall_speed_mm_s`: `10.0` (safety floor speed).
-- `skip_first_layers`: `1` (preserves bed adhesion).
+1. Enable the plugin in OrcaSlicer (**Process** -> **Others** -> **Slicing Pipeline Plugin**).
+2. Select **Smoothing Wall Speed Along Z**.
+3. Slice your plate and print normally. Simple mode is active by default.

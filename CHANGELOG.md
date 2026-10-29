@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-10-29
+
+### Added
+- Added dual operating modes: **Simple** (default) and **Advanced**.
+  - **Simple Mode**: 1:1 match with Bambu Studio & Creality Print slicers. Zero parameter tuning needed; applies the exact Gaussian kernel relaxation ($W=11, r=2.0$, threshold $5.0\text{ mm/s}$).
+  - **Advanced Mode**: Allows fine-tuning Gaussian radius, kernel window size, convergence threshold, or switching to linear gradient ramp limiting.
+- Generated platform-suffixed wheels (`_win_x86_64.whl`, `_linux_x86_64.whl`, `_macosx_arm64.whl`) matching OrcaCloud validation requirements.
+
 ## [1.1.0] - 2026-10-29
 
 ### Added

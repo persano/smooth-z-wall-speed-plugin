@@ -1,11 +1,27 @@
 # Smoothing Wall Speed Along Z — OrcaSlicer Plugin
 
 [![CI](https://github.com/persano/orcaslicer-smooth-z-wall-speed/actions/workflows/ci.yml/badge.svg)](https://github.com/persano/orcaslicer-smooth-z-wall-speed/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-v1.1.0-blue.svg)](https://github.com/persano/orcaslicer-smooth-z-wall-speed/releases)
+[![Release](https://img.shields.io/badge/release-v1.2.0-blue.svg)](https://github.com/persano/orcaslicer-smooth-z-wall-speed/releases)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPLv3-green.svg)](LICENSE)
 [![OrcaSlicer](https://img.shields.io/badge/OrcaSlicer-v2.4%2B%20%7C%20v2.5%20nightly-orange.svg)](https://github.com/OrcaSlicer/OrcaSlicer)
 
 An OrcaSlicer Python plugin bringing Bambu Studio and Creality Print 5's **"Smoothing Wall Speed Along Z"** (`z_direction_outwall_speed_continuous`) feature to OrcaSlicer.
+
+---
+
+## Simple vs Advanced Mode
+
+In Bambu Studio and Creality Print, this feature is a single checkbox with no tunable parameters. This plugin provides both:
+
+1. **Simple Mode (Default — Zero Config)**:
+   - Exactly matches Bambu Studio and Creality Print (`libslic3r/GCode/Smoothing.cpp`).
+   - Uses the hardcoded iterative 1D Gaussian kernel relaxation ($W=11, r=2.0$, stop threshold $5.0\text{ mm/s}$).
+   - No settings to adjust: just enable and slice.
+
+2. **Advanced Mode**:
+   - Set `"mode": "advanced"` in Plugin Configuration.
+   - Fine-tune Gaussian standard deviation `gaussian_radius`, kernel window `gaussian_window_size`, and convergence threshold `gaussian_stop_threshold_mm_s`.
+   - Or switch to linear gradient ramp limiting (`"smoothing_algorithm": "gradient"`).
 
 ---
 

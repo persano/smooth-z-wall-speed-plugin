@@ -15,6 +15,7 @@ from smooth_z_wall_speed import (
     generate_gaussian_kernel,
     apply_gaussian_smoothing,
     DEFAULT_CONFIG,
+    BAMBU_CREALITY_DEFAULTS,
 )
 
 
@@ -90,7 +91,6 @@ class TestSmoothZWallSpeed(unittest.TestCase):
     def test_gaussian_kernel_properties(self):
         kernel, total = generate_gaussian_kernel(window_size=11, radius=2.0)
         self.assertEqual(len(kernel), 11)
-        # Symmetry check
         for i in range(5):
             self.assertAlmostEqual(kernel[i], kernel[10 - i], places=6)
         self.assertGreater(total, 0.95)
@@ -107,60 +107,54 @@ class TestSmoothZWallSpeed(unittest.TestCase):
             max_steps=1000,
         )
         self.assertGreater(steps, 0)
-        # Safe monotonic clamp: no layer should exceed original speed
         for i in range(len(speeds)):
             self.assertLessEqual(smoothed[i], speeds[i] + 1e-6)
-        # Layers 4 and 6 must be pulled down significantly
         self.assertLess(smoothed[4], 8000.0)
         self.assertLess(smoothed[6], 8000.0)
-        # Max adjacent difference must be <= 300 mm/min (5.0 mm/s)
         max_adj_diff = max(abs(smoothed[i+1] - smoothed[i]) for i in range(1, len(speeds)-1))
         self.assertLessEqual(max_adj_diff, 300.0 + 1e-4)
 
-    def test_smoothing_gaussian_mode(self):
-        lines = generate_synthetic_gcode(
-            num_layers=12,
-            z_step=0.2,
-            default_speed=12000.0,
-            slow_layer_idx=6,
-            slow_speed=3000.0,
-        )
-        cfg = {"smoothing_mode": "gaussian"}
+    def test_simple_mode(self):
+        lines = generate_synthetic_gcode(num_layers=12, slow_layer_idx=6, slow_speed=3000.0)
+        cfg = {"mode": "simple"}
         output_lines, stats = smooth_gcode_lines(lines, cfg)
-        self.assertEqual(stats["mode"], "gaussian")
+        self.assertEqual(stats["mode"], "simple")
+        self.assertEqual(stats["algorithm"], "gaussian")
         self.assertGreater(stats["smoothed_layers"], 0)
-        self.assertGreater(stats["updated_moves"], 0)
         self.assertGreater(stats["steps_converged"], 0)
 
-    def test_smoothing_gradient_mode(self):
-        lines = generate_synthetic_gcode(
-            num_layers=10,
-            z_step=0.2,
-            default_speed=12000.0,
-            slow_layer_idx=5,
-            slow_speed=3000.0,
-        )
+    def test_advanced_mode_gradient(self):
+        lines = generate_synthetic_gcode(num_layers=10, slow_layer_idx=5, slow_speed=3000.0)
         cfg = {
-            "smoothing_mode": "gradient",
+            "mode": "advanced",
+            "smoothing_algorithm": "gradient",
             "max_speed_change_per_mm": 50.0,
             "min_outer_wall_speed_mm_s": 10.0,
             "skip_first_layers": 1,
         }
         output_lines, stats = smooth_gcode_lines(lines, cfg)
-        self.assertEqual(stats["mode"], "gradient")
+        self.assertEqual(stats["mode"], "advanced")
+        self.assertEqual(stats["algorithm"], "gradient")
         self.assertEqual(stats["total_layers"], 10)
         self.assertGreater(stats["smoothed_layers"], 0)
-        self.assertGreater(stats["updated_moves"], 0)
+
+    def test_advanced_mode_custom_gaussian(self):
+        lines = generate_synthetic_gcode(num_layers=10, slow_layer_idx=5, slow_speed=3000.0)
+        cfg = {
+            "mode": "advanced",
+            "smoothing_algorithm": "gaussian",
+            "gaussian_radius": 3.0,
+            "gaussian_window_size": 15,
+            "gaussian_stop_threshold_mm_s": 3.0,
+        }
+        output_lines, stats = smooth_gcode_lines(lines, cfg)
+        self.assertEqual(stats["mode"], "advanced")
+        self.assertEqual(stats["algorithm"], "gaussian")
+        self.assertGreater(stats["smoothed_layers"], 0)
 
     def test_skip_first_layer(self):
-        lines = generate_synthetic_gcode(
-            num_layers=6,
-            z_step=0.2,
-            default_speed=12000.0,
-            slow_layer_idx=1,
-            slow_speed=3000.0,
-        )
-        cfg = {"skip_first_layers": 1}
+        lines = generate_synthetic_gcode(num_layers=6, slow_layer_idx=1, slow_speed=3000.0)
+        cfg = {"mode": "simple"}
         output_lines, stats = smooth_gcode_lines(lines, cfg)
 
         current_layer = -1

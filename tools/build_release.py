@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
-"""Build wheel (.whl) and zip distributions for Smoothing Wall Speed Along Z plugin."""
+"""Build wheel (.whl) and zip distributions for Smoothing Wall Speed Along Z plugin.
+
+Produces both platform-suffixed wheels for OrcaCloud (win_x86_64, linux_x86_64, macosx_arm64)
+and a universal purelib wheel + drop-in zip package.
+"""
 
 import base64
 import hashlib
 import os
 import zipfile
 
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 PLUGIN_MODULE = "smooth_z_wall_speed"
 DIST_INFO = f"{PLUGIN_MODULE}-{VERSION}.dist-info"
 
@@ -31,19 +35,25 @@ TOP_LEVEL_CONTENT = f"{PLUGIN_MODULE}\n"
 def build_wheel(whl_filename: str):
     files = {}
 
-    # Root script and package
     with open(f"{PLUGIN_MODULE}.py", "rb") as f:
         code_data = f.read()
 
     files[f"{PLUGIN_MODULE}/__init__.py"] = code_data
     files[f"{PLUGIN_MODULE}/{PLUGIN_MODULE}.py"] = code_data
 
-    for fn in ("icon.png", "icon_orcacloud_320x320.png", "CHANGELOG.md", "ORCACLOUD_CHANGELOG.md", "ORCACLOUD_DESCRIPTION.md", ".install_state.json", "README.md"):
+    for fn in (
+        "icon.png",
+        "icon_orcacloud_320x320.png",
+        "CHANGELOG.md",
+        "ORCACLOUD_CHANGELOG.md",
+        "ORCACLOUD_DESCRIPTION.md",
+        ".install_state.json",
+        "README.md",
+    ):
         if os.path.exists(fn):
             with open(fn, "rb") as f:
                 files[f"{PLUGIN_MODULE}/{fn}"] = f.read()
 
-    # Dist-info metadata
     files[f"{DIST_INFO}/METADATA"] = METADATA_CONTENT.encode("utf-8")
     files[f"{DIST_INFO}/WHEEL"] = WHEEL_CONTENT.encode("utf-8")
     files[f"{DIST_INFO}/top_level.txt"] = TOP_LEVEL_CONTENT.encode("utf-8")
@@ -53,7 +63,6 @@ def build_wheel(whl_filename: str):
             with open(lic, "rb") as f:
                 files[f"{DIST_INFO}/{lic}"] = f.read()
 
-    # PEP 376 / PEP 427 RECORD with sha256 hashes and lengths
     record_lines = []
     for arcname, data in files.items():
         digest = hashlib.sha256(data).digest()
@@ -94,5 +103,14 @@ def build_zip(zip_filename: str = f"{PLUGIN_MODULE}_plugin.zip"):
 
 if __name__ == "__main__":
     os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    
+    # Standard Python universal wheel
     build_wheel(f"{PLUGIN_MODULE}-{VERSION}-py3-none-any.whl")
+    
+    # OrcaCloud platform-tagged wheels (matching OrcaCloud validator convention)
+    build_wheel(f"{PLUGIN_MODULE}_win_x86_64.whl")
+    build_wheel(f"{PLUGIN_MODULE}_linux_x86_64.whl")
+    build_wheel(f"{PLUGIN_MODULE}_macosx_arm64.whl")
+
+    # Drop-in zip package
     build_zip(f"{PLUGIN_MODULE}_plugin.zip")
