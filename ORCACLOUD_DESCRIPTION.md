@@ -74,4 +74,4 @@ For power users who want fine-grained control over the smoothing curve:
 
 - **License**: GPL-3.0 License.
 - **Core Reference**: Based on the slicing research and `Smoothing.cpp` implementation in [BambuStudio](https://github.com/bambulab/BambuStudio) and [CrealityPrint](https://github.com/CrealityOfficial/CrealityPrint).
-- **GitHub Repository**: [persano/orcaslicer-smooth-z-wall-speed](https://github.com/persano/orcaslicer-smooth-z-wall-speed)
+- **GitHub Repository**: [persano/smooth-z-wall-speed-plugin](https://github.com/persano/smooth-z-wall-speed-plugin)

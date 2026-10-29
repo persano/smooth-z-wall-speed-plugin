@@ -6,8 +6,8 @@
 
 # Smoothing Wall Speed Along Z — OrcaSlicer Plugin
 
-[![CI](https://github.com/persano/orcaslicer-smooth-z-wall-speed/actions/workflows/ci.yml/badge.svg)](https://github.com/persano/orcaslicer-smooth-z-wall-speed/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-v1.2.0-blue.svg)](https://github.com/persano/orcaslicer-smooth-z-wall-speed/releases)
+[![CI](https://github.com/persano/smooth-z-wall-speed-plugin/actions/workflows/ci.yml/badge.svg)](https://github.com/persano/smooth-z-wall-speed-plugin/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/badge/release-v1.2.0-blue.svg)](https://github.com/persano/smooth-z-wall-speed-plugin/releases)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPLv3-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)]()
 [![OrcaSlicer](https://img.shields.io/badge/OrcaSlicer-v2.4%2B%20%7C%20v2.5%20nightly-orange.svg)](https://github.com/OrcaSlicer/OrcaSlicer)
@@ -75,7 +75,7 @@ In Bambu Studio and Creality Print, this feature is a single checkbox with no tu
 ## Installation
 
 ### Method 1: Manual Zip Install
-1. Download `smooth_z_wall_speed_plugin.zip` from [Releases](https://github.com/persano/orcaslicer-smooth-z-wall-speed/releases/latest).
+1. Download `smooth_z_wall_speed_plugin.zip` from [Releases](https://github.com/persano/smooth-z-wall-speed-plugin/releases/latest).
 2. Unpack into your OrcaSlicer plugins folder:
    - **Windows**: `%APPDATA%\OrcaSlicer\orca_plugins\smooth_z_wall_speed\`
    - **Linux**: `~/.config/OrcaSlicer/orca_plugins/smooth_z_wall_speed/`
