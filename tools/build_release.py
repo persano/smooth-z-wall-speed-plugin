@@ -6,7 +6,7 @@ import hashlib
 import os
 import zipfile
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 PLUGIN_MODULE = "smooth_z_wall_speed"
 DIST_INFO = f"{PLUGIN_MODULE}-{VERSION}.dist-info"
 

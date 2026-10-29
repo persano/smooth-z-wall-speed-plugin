@@ -3,9 +3,9 @@
 #
 # [tool.orcaslicer.plugin]
 # name = "Smoothing Wall Speed Along Z"
-# description = "Smooths outer wall speed transitions across adjacent Z layers to eliminate speed banding and gloss lines."
+# description = "Smooths outer wall speed transitions across adjacent Z layers using Bambu Studio and Creality Print Gaussian relaxation algorithm."
 # author = "persano"
-# version = "1.0.0"
+# version = "1.1.0"
 # type = "slicing-pipeline"
 # ///
 """Smoothing Wall Speed Along Z Plugin for OrcaSlicer.
@@ -13,6 +13,9 @@
 Smooths outer wall speed transitions across adjacent Z layers to eliminate
 speed banding and gloss mismatches on vertical walls caused by abrupt cooling
 slowdowns or overhang transitions.
+
+Directly implements the iterative 1D Gaussian kernel relaxation algorithm from
+Bambu Studio and Creality Print (libslic3r/GCode/Smoothing.cpp).
 """
 
 from __future__ import annotations
@@ -30,14 +33,19 @@ except ImportError:
     orca = None
 
 PLUGIN_NAME = "Smoothing Wall Speed Along Z"
-PLUGIN_VERSION = "1.0.0"
+PLUGIN_VERSION = "1.1.0"
 
 DEFAULT_CONFIG: Dict[str, Any] = {
     "enabled": True,
-    "max_speed_change_per_mm": 50.0,    # Max velocity delta in mm/s per 1 mm Z change
-    "min_outer_wall_speed_mm_s": 10.0,  # Floor clamp in mm/s
-    "skip_first_layers": 1,             # Number of first layers to leave untouched (bed adhesion)
-    "smooth_overhang_layers": True,     # Factor overhang outer wall slowdowns into Z smoothing
+    "smoothing_mode": "gaussian",        # "gaussian" (Creality/Bambu 1:1 match) or "gradient"
+    "gaussian_radius": 2.0,              # Gaussian standard deviation / radius r (Bambu/Creality default: 2.0)
+    "gaussian_window_size": 11,          # Kernel window size (Bambu/Creality default: 11)
+    "gaussian_stop_threshold_mm_s": 5.0, # Stop threshold in mm/s between adjacent layers (Bambu/Creality default: 5.0)
+    "max_steps_count": 1000,             # Maximum relaxation steps (Bambu/Creality default: 1000)
+    "max_speed_change_per_mm": 50.0,     # Used when smoothing_mode == "gradient"
+    "min_outer_wall_speed_mm_s": 10.0,   # Floor clamp in mm/s
+    "skip_first_layers": 1,              # Exclude first layers for bed adhesion
+    "smooth_overhang_layers": True,      # Factor overhang outer wall slowdowns into Z smoothing
 }
 
 RE_LAYER_CHANGE = re.compile(r"^;LAYER_CHANGE")
@@ -50,6 +58,19 @@ RE_SPIRAL_VASE  = re.compile(r"^;\s*(?:spiral_mode|spiral_vase)\s*=\s*1", re.IGN
 RE_G_CMD        = re.compile(r"^([Gg][01])(\s+[^;\n]*)?")
 RE_FEEDRATE     = re.compile(r"([Ff])([0-9.]+)")
 RE_EXTRUSION    = re.compile(r"([Ee])([0-9.-]+)")
+
+
+def generate_gaussian_kernel(window_size: int = 11, radius: float = 2.0) -> Tuple[List[float], float]:
+    """Generate 1D Gaussian filter kernel identical to libslic3r/GCode/Smoothing.cpp."""
+    half_win = window_size // 2
+    kernel = []
+    total_sum = 0.0
+    for x in range(-half_win, half_win + 1):
+        # exp(-x^2 / (2 * r^2)) / (r * sqrt(2 * PI))
+        val = math.exp(- (x * x) / (2.0 * radius * radius)) / (radius * math.sqrt(2.0 * math.pi))
+        kernel.append(val)
+        total_sum += val
+    return kernel, total_sum
 
 
 def parse_feedrate(line: str) -> Optional[float]:
@@ -81,13 +102,68 @@ def set_feedrate_on_line(line: str, new_f: float) -> str:
     if RE_FEEDRATE.search(line):
         return RE_FEEDRATE.sub(f_str, line)
     
-    # Insert before comment or newline
     comment_pos = line.find(";")
     if comment_pos != -1:
         code_part = line[:comment_pos].rstrip()
         comment_part = line[comment_pos:]
         return f"{code_part} {f_str} {comment_part}"
     return f"{line.rstrip()} {f_str}\n"
+
+
+def apply_gaussian_smoothing(
+    speeds: List[float],
+    skip_layers: int,
+    window_size: int = 11,
+    radius: float = 2.0,
+    stop_threshold_mm_min: float = 300.0,
+    max_steps: int = 1000,
+) -> Tuple[List[float], int]:
+    """Iterative Gaussian filter relaxation identical to Creality Print / Bambu Studio.
+
+    Speeds are in mm/min. Stop threshold is in mm/min (5.0 mm/s * 60 = 300.0 mm/min).
+    Monotonically clamps: only reduces speed, never increases.
+    """
+    kernel, kernel_sum = generate_gaussian_kernel(window_size, radius)
+    half_win = window_size // 2
+    smoothed = list(speeds)
+    total_layers = len(smoothed)
+    layer_start = skip_layers
+    layer_end = total_layers - 1
+
+    if layer_end <= layer_start:
+        return smoothed, 0
+
+    step_count = 0
+    while step_count < max_steps:
+        max_diff = 0.0
+        for i in range(layer_start, layer_end):
+            diff = abs(smoothed[i + 1] - smoothed[i])
+            if diff > max_diff:
+                max_diff = diff
+
+        if max_diff <= stop_threshold_mm_min:
+            break
+
+        step_count += 1
+        new_smoothed = list(smoothed)
+
+        for layer_id in range(layer_start, layer_end + 1):
+            conv_sum = 0.0
+            for k_idx, offset in enumerate(range(-half_win, half_win + 1)):
+                pos = layer_id + offset
+                if pos < layer_start:
+                    pos = layer_start
+                elif pos > layer_end:
+                    pos = layer_end
+                conv_sum += kernel[k_idx] * smoothed[pos]
+
+            filtered_speed = conv_sum / kernel_sum
+            if filtered_speed < new_smoothed[layer_id]:
+                new_smoothed[layer_id] = filtered_speed
+
+        smoothed = new_smoothed
+
+    return smoothed, step_count
 
 
 def smooth_gcode_lines(
@@ -108,6 +184,8 @@ def smooth_gcode_lines(
         "total_layers": 0,
         "smoothed_layers": 0,
         "updated_moves": 0,
+        "mode": cfg.get("smoothing_mode", "gaussian"),
+        "steps_converged": 0,
         "skipped_reason": None,
     }
 
@@ -115,27 +193,18 @@ def smooth_gcode_lines(
         stats["skipped_reason"] = "disabled"
         return lines, stats
 
-    max_accel_z = float(cfg.get("max_speed_change_per_mm", 50.0))
     min_speed_mm_s = float(cfg.get("min_outer_wall_speed_mm_s", 10.0))
     skip_layers = int(cfg.get("skip_first_layers", 1))
     smooth_overhang = bool(cfg.get("smooth_overhang_layers", True))
+    smoothing_mode = str(cfg.get("smoothing_mode", "gaussian")).lower()
 
-    # Convert mm/s to mm/min
     min_f = min_speed_mm_s * 60.0
 
-    # Quick scan for vase mode
     for line in lines[:500]:
         if RE_SPIRAL_VASE.search(line):
             stats["skipped_reason"] = "spiral_vase_mode"
             return lines, stats
 
-    # Layer representation:
-    # {
-    #   'z': float,
-    #   'outer_speeds': List[float],
-    #   'outer_move_indices': List[int],
-    #   'overhang_speeds': List[float],
-    # }
     layers: List[Dict[str, Any]] = []
     current_layer = -1
     current_z = 0.0
@@ -204,7 +273,6 @@ def smooth_gcode_lines(
         stats["skipped_reason"] = "not_enough_layers"
         return lines, stats
 
-    # Compute baseline outer wall speed per layer (mm/min)
     baseline_f: List[float] = []
     constraint_f: List[float] = []
 
@@ -214,7 +282,6 @@ def smooth_gcode_lines(
             all_speeds.extend(lyr["overhang_speeds"])
 
         if lyr["outer_speeds"]:
-            # Nominal speed is the dominant/median outer wall speed
             sorted_speeds = sorted(lyr["outer_speeds"])
             nominal = sorted_speeds[len(sorted_speeds) // 2]
             baseline_f.append(nominal)
@@ -228,35 +295,46 @@ def smooth_gcode_lines(
             prev_c = constraint_f[-1] if constraint_f else 6000.0
             constraint_f.append(prev_c)
 
-    # Bidirectional gradient smoothing along Z:
-    # We smooth target_f such that:
-    # target_f[i] <= baseline_f[i]  (never speed up beyond user's slicer speed)
-    # target_f[i] <= constraint_f[i] if layer i had a slowdown
-    # |target_f[i] - target_f[i-1]| <= max_df
-    smoothed_f = [min(baseline_f[i], constraint_f[i]) for i in range(total_layers)]
+    initial_f = [min(baseline_f[i], constraint_f[i]) for i in range(total_layers)]
 
-    # Forward pass: propagate slowdown constraints upward
-    for i in range(skip_layers + 1, total_layers):
-        dz = abs(layers[i]["z"] - layers[i - 1]["z"])
-        if dz < 1e-4:
-            dz = 0.2  # sensible fallback layer height
-        max_df = max_accel_z * 60.0 * dz
-        if smoothed_f[i] > smoothed_f[i - 1] + max_df:
-            smoothed_f[i] = smoothed_f[i - 1] + max_df
+    if smoothing_mode == "gaussian":
+        win_size = int(cfg.get("gaussian_window_size", 11))
+        radius = float(cfg.get("gaussian_radius", 2.0))
+        stop_thresh_mm_min = float(cfg.get("gaussian_stop_threshold_mm_s", 5.0)) * 60.0
+        max_steps = int(cfg.get("max_steps_count", 1000))
 
-    # Backward pass: propagate slowdown constraints downward
-    for i in range(total_layers - 2, skip_layers - 1, -1):
-        dz = abs(layers[i + 1]["z"] - layers[i]["z"])
-        if dz < 1e-4:
-            dz = 0.2
-        max_df = max_accel_z * 60.0 * dz
-        if smoothed_f[i] > smoothed_f[i + 1] + max_df:
-            smoothed_f[i] = smoothed_f[i + 1] + max_df
+        smoothed_f, steps = apply_gaussian_smoothing(
+            initial_f,
+            skip_layers=skip_layers,
+            window_size=win_size,
+            radius=radius,
+            stop_threshold_mm_min=stop_thresh_mm_min,
+            max_steps=max_steps,
+        )
+        stats["steps_converged"] = steps
+    else:
+        max_accel_z = float(cfg.get("max_speed_change_per_mm", 50.0))
+        smoothed_f = list(initial_f)
 
-    # Apply minimum floor clamp
+        for i in range(skip_layers + 1, total_layers):
+            dz = abs(layers[i]["z"] - layers[i - 1]["z"])
+            if dz < 1e-4:
+                dz = 0.2
+            max_df = max_accel_z * 60.0 * dz
+            if smoothed_f[i] > smoothed_f[i - 1] + max_df:
+                smoothed_f[i] = smoothed_f[i - 1] + max_df
+
+        for i in range(total_layers - 2, skip_layers - 1, -1):
+            dz = abs(layers[i + 1]["z"] - layers[i]["z"])
+            if dz < 1e-4:
+                dz = 0.2
+            max_df = max_accel_z * 60.0 * dz
+            if smoothed_f[i] > smoothed_f[i + 1] + max_df:
+                smoothed_f[i] = smoothed_f[i + 1] + max_df
+
+    # Floor speed clamp
     smoothed_f = [max(min_f, val) for val in smoothed_f]
 
-    # Rewrite G-code lines
     output_lines = list(lines)
     updated_moves = 0
     smoothed_layers_count = 0
@@ -265,13 +343,11 @@ def smooth_gcode_lines(
         target_speed = smoothed_f[i]
         orig_nominal = baseline_f[i]
 
-        # Only modify if delta is significant (>= 30 mm/min, or 0.5 mm/s)
         if target_speed < (orig_nominal - 30.0):
             smoothed_layers_count += 1
             for line_idx in layers[i]["outer_move_indices"]:
                 orig_line = output_lines[line_idx]
                 line_f = parse_feedrate(orig_line) or orig_nominal
-                # Only clamp down faster moves, never speed up existing slower detail moves
                 if line_f > target_speed:
                     output_lines[line_idx] = set_feedrate_on_line(orig_line, target_speed)
                     updated_moves += 1
@@ -326,7 +402,6 @@ if orca:
             return cfg
 
         def execute(self, ctx: Any) -> Any:
-            # Only execute at post-process step where G-code file is emitted
             if ctx.step != orca.slicing.Step.psGCodePostProcess:
                 return orca.ExecutionResult.success()
 
@@ -340,7 +415,8 @@ if orca:
                 stats = smooth_gcode_file(ctx.gcode_path, config=cfg)
                 msg = (
                     f"{PLUGIN_NAME}: processed {stats['total_layers']} layers, "
-                    f"smoothed {stats['smoothed_layers']} layers ({stats['updated_moves']} moves modified)"
+                    f"smoothed {stats['smoothed_layers']} layers ({stats['updated_moves']} moves modified) "
+                    f"using {stats['mode']} mode (converged in {stats.get('steps_converged', 0)} steps)"
                 )
                 return orca.ExecutionResult.success(msg)
             except Exception as e:
@@ -363,14 +439,21 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=f"{PLUGIN_NAME} CLI")
     parser.add_argument("gcode", help="Path to input .gcode file")
     parser.add_argument("-o", "--output", help="Optional output .gcode path (default: in-place)")
-    parser.add_argument("--max-accel-z", type=float, default=50.0, help="Max speed delta mm/s per mm Z")
-    parser.add_argument("--min-speed", type=float, default=10.0, help="Floor speed in mm/s")
+    parser.add_argument("--mode", choices=["gaussian", "gradient"], default="gaussian",
+                        help="Smoothing algorithm (default: gaussian)")
+    parser.add_argument("--radius", type=float, default=2.0, help="Gaussian radius r (default: 2.0)")
+    parser.add_argument("--window", type=int, default=11, help="Gaussian window size (default: 11)")
+    parser.add_argument("--stop-threshold", type=float, default=5.0, help="Stop threshold in mm/s (default: 5.0)")
+    parser.add_argument("--min-speed", type=float, default=10.0, help="Floor speed in mm/s (default: 10.0)")
     parser.add_argument("--skip-first", type=int, default=1, help="Number of first layers to skip")
     args = parser.parse_args()
 
     cli_config = {
         "enabled": True,
-        "max_speed_change_per_mm": args.max_accel_z,
+        "smoothing_mode": args.mode,
+        "gaussian_radius": args.radius,
+        "gaussian_window_size": args.window,
+        "gaussian_stop_threshold_mm_s": args.stop_threshold,
         "min_outer_wall_speed_mm_s": args.min_speed,
         "skip_first_layers": args.skip_first,
     }
