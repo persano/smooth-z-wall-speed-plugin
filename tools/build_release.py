@@ -49,6 +49,8 @@ def build_wheel(whl_filename: str):
         "ORCACLOUD_DESCRIPTION.md",
         ".install_state.json",
         "README.md",
+        "resources/images/icon.png",
+        "resources/images/creality_print_setting_preview.jpg",
     ):
         if os.path.exists(fn):
             with open(fn, "rb") as f:
@@ -91,6 +93,8 @@ def build_zip(zip_filename: str = f"{PLUGIN_MODULE}_plugin.zip"):
         "LICENSE",
         "icon.png",
         "icon_orcacloud_320x320.png",
+        "resources/images/icon.png",
+        "resources/images/creality_print_setting_preview.jpg",
     ]
 
     with zipfile.ZipFile(zip_filename, "w", compression=zipfile.ZIP_DEFLATED) as z:
