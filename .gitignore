@@ -12,3 +12,6 @@ dist/
 htmlcov/
 .DS_Store
 Thumbs.db
+
+smooth_z_wall_speed_config.json
+

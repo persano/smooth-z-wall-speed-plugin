@@ -1,12 +1,15 @@
 {
   "capabilities": [
     {
+      "Smooth Z Speed": true
+    },
+    {
       "Smoothing Wall Speed Along Z": true
     }
   ],
   "enabled": true,
   "installed_from": "local",
-  "installed_version": "1.2.0",
+  "installed_version": "1.3.0",
   "permissions": {
     "fs_read": [],
     "fs_readwrite": [],

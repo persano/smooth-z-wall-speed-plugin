@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-10-29
+
+### Added
+- **Interactive UI Tab in OrcaSlicer**: Registered `PagesPluginCapabilityBase` providing a dedicated top-level tab ("Smooth Z Speed") in OrcaSlicer with modern dark-mode controls.
+- **Visual Mode Switching**: Easily switch between **Simple Mode (1:1 Bambu/Creality)** and **Advanced Mode (Custom Tuning)** directly in the UI.
+- **Interactive Gaussian Curve Visualizer**: Live HTML5 canvas displaying the Gaussian filter weights and simulated layer speed profile.
+- **Persistent Configuration Storage**: Shared JSON config (`smooth_z_wall_speed_config.json`) automatically synchronizes settings between the UI tab and slicing pipeline executions.
+- **Edge-to-Edge App Icon**: Clean, full-bleed 3D icon without squircle card container for crisp rendering across all resolutions.
+- Clarified slicing pipeline integration: Explains picker location (**Process -> Others -> Slicing Pipeline Plugin**) and explains why the in-memory 3D viewer renders pre-post-process toolpaths while exported G-code contains smoothed speeds.
+
 ## [1.2.0] - 2026-10-29
 
 ### Added

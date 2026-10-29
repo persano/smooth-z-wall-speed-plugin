@@ -16,6 +16,9 @@ from smooth_z_wall_speed import (
     apply_gaussian_smoothing,
     DEFAULT_CONFIG,
     BAMBU_CREALITY_DEFAULTS,
+    load_config,
+    save_config,
+    get_config_file_path,
 )
 
 
@@ -216,6 +219,22 @@ class TestSmoothZWallSpeed(unittest.TestCase):
                 os.remove(temp_in)
             if os.path.exists(temp_out):
                 os.remove(temp_out)
+
+    def test_config_load_and_save(self):
+        cfg = load_config()
+        self.assertIn("mode", cfg)
+        self.assertIn("gaussian_radius", cfg)
+        
+        ok, msg = save_config({"gaussian_radius": 2.5, "mode": "advanced"})
+        self.assertTrue(ok)
+        reloaded = load_config()
+        self.assertEqual(reloaded["gaussian_radius"], 2.5)
+        self.assertEqual(reloaded["mode"], "advanced")
+
+        # Restore default
+        save_config(DEFAULT_CONFIG)
+        restored = load_config()
+        self.assertEqual(restored["mode"], "simple")
 
 
 if __name__ == "__main__":

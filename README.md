@@ -7,7 +7,7 @@
 # Smoothing Wall Speed Along Z — OrcaSlicer Plugin
 
 [![CI](https://github.com/persano/smooth-z-wall-speed-plugin/actions/workflows/ci.yml/badge.svg)](https://github.com/persano/smooth-z-wall-speed-plugin/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-v1.2.0-blue.svg)](https://github.com/persano/smooth-z-wall-speed-plugin/releases)
+[![Release](https://img.shields.io/badge/release-v1.3.0-blue.svg)](https://github.com/persano/smooth-z-wall-speed-plugin/releases)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPLv3-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)]()
 [![OrcaSlicer](https://img.shields.io/badge/OrcaSlicer-v2.4%2B%20%7C%20v2.5%20nightly-orange.svg)](https://github.com/OrcaSlicer/OrcaSlicer)
@@ -86,17 +86,28 @@ In Bambu Studio and Creality Print, this feature is a single checkbox with no tu
 
 ### Method 2: Python Wheel Install
 1. Open OrcaSlicer -> **File** -> **Plugins**.
-2. Click **Install from Wheel...** and select `smooth_z_wall_speed-1.2.0-py3-none-any.whl` (or your OS-specific wheel).
+2. Click **Install from Wheel...** and select `smooth_z_wall_speed-1.3.0-py3-none-any.whl` (or your OS-specific wheel).
 3. Restart OrcaSlicer.
 
 ---
 
-## How to Enable in OrcaSlicer
+## Dedicated UI Tab & Configuration
 
-1. In OrcaSlicer, open your **Process** settings.
-2. Navigate to **Others** -> **Slicing Pipeline Plugin**.
-3. Select **Smoothing Wall Speed Along Z**.
-4. Slice your plate and print normally. Simple mode is active by default.
+This plugin registers an interactive top-level tab in OrcaSlicer named **`Smooth Z Speed`**:
+- **Simple Mode**: One-click 1:1 match with Bambu Studio & Creality Print 5. Zero configuration required.
+- **Advanced Mode**: Tune Gaussian radius, kernel window size, convergence threshold, or switch to linear gradient ramp.
+- **Interactive Curve Visualizer**: Live canvas chart of the Gaussian filter kernel.
+- **Persistent Storage**: Saved settings automatically sync to the slicing pipeline.
+
+### How to Apply to a Print
+1. In OrcaSlicer, open your **Process** profile (left sidebar).
+2. Navigate to **Others** -> scroll to **Slicing Pipeline Plugin**.
+3. In the dropdown picker, select **Smoothing Wall Speed Along Z**.
+4. Slice and export/print.
+
+> [!NOTE]
+> **Why doesn't the 3D Viewport Speed preview change?**
+> OrcaSlicer's in-memory 3D preview renders raw toolpaths immediately upon slicing before post-processing. Slicing pipeline plugins run at `psGCodePostProcess` to safely modify the final G-code file on disk during **Export G-code file** or **Print**. To inspect the smoothed outer wall speeds, open the exported `.gcode` file in any viewer or check outer wall `F...` feedrates.
 
 ---
 
