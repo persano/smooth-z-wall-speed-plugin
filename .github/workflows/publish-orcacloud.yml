@@ -1,0 +1,59 @@
+name: Publish to OrcaCloud
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to publish (e.g. 1.0.0)'
+        required: false
+        default: '1.0.0'
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  PLUGIN_FILES: "*.whl"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build wheel
+        run: |
+          python tools/build_release.py
+
+      - name: Publish release to OrcaCloud
+        run: |
+          set -euo pipefail
+          oidc_token="$(curl -sS -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=orcacloud" | jq -r .value)"
+          version="${{ inputs.version }}"
+          if [ -z "$version" ]; then
+            version="${GITHUB_REF_NAME#v}"
+          fi
+          changelog="$(awk -v pat="## \\[$version\\]" '$0 ~ "^"pat {p=1; next} /^## / {p=0} p {print}' \
+            CHANGELOG.md 2>/dev/null || echo "Automated release from GitHub")"
+          changelog="$(echo "$changelog" | head -c 4000)"
+          metadata="$(jq -cn --arg version "$version" --arg changelog "$changelog" \
+            '{version: $version} + (if $changelog == "" then {} else {changelog: $changelog} end)')"
+          args=(--form-string "metadata=$metadata")
+          shopt -s nullglob
+          for file in $PLUGIN_FILES; do
+            args+=(-F "files=@$file")
+          done
+          status="$(curl -sS -o response.json -w '%{http_code}' \
+            -H "Authorization: Bearer $oidc_token" \
+            "${args[@]}" \
+            https://api.orcaslicer.com/api/v1/plugin-publish/releases || true)"
+          cat response.json || true
+          echo "Status: $status"

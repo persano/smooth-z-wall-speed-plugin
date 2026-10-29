@@ -1,0 +1,18 @@
+{
+  "capabilities": [
+    {
+      "Smoothing Wall Speed Along Z": true
+    }
+  ],
+  "enabled": true,
+  "installed_from": "local",
+  "installed_version": "1.0.0",
+  "permissions": {
+    "fs_read": [],
+    "fs_readwrite": [],
+    "network_http": [],
+    "network_socket": [],
+    "process": []
+  },
+  "plugin_name": "Smoothing Wall Speed Along Z"
+}
