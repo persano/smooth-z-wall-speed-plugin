@@ -10,7 +10,7 @@ import hashlib
 import os
 import zipfile
 
-VERSION = "1.3.1"
+VERSION = "1.3.2"
 PLUGIN_MODULE = "smooth_z_wall_speed"
 DIST_INFO = f"{PLUGIN_MODULE}-{VERSION}.dist-info"
 
@@ -127,3 +127,4 @@ if __name__ == "__main__":
 
     # Drop-in zip package
     build_zip(f"dist/{PLUGIN_MODULE}_plugin.zip")
+

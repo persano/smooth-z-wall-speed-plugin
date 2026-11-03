@@ -1,4 +1,11 @@
 # OrcaCloud Release Changelog
+## v1.3.2 - Algorithm aligned with Bambu Studio / Creality Print source (2026-11-03)
+### Fixed: smoothing now matches the upstream slicers
+- The per-layer seed is the outer-wall maximum speed with overhang moves excluded (was a minimum that included overhangs), and the rewrite compares against the sampled modal feedrate along the path (was the line-local `F` with a layer-max fallback), matching `libslic3r/GCode/Smoothing.cpp` in Bambu Studio and Creality Print.
+- Validated against real before/after exports from both slicers: outer-wall time delta +18s vs upstream +19s (Bambu Studio) and +12s vs +10s (Creality Print), no other features touched.
+### Changed: `smooth_overhang_layers`
+- Now only clamps overhang moves faster than the smoothing target. Removes the aggressive clamp that previously cost +142% outer-wall time on the reference model (now +0.2%).
+
 ## v1.3.1 - Bambu flavour G-code support & styled config dialog (2026-11-03)
 ### Fixed: Bambu flavour exports were silently skipped
 - The parser only recognized Orca/Prusa markers (`;LAYER_CHANGE`, `;TYPE:Outer wall`), so Bambu flavour exports (`; layer num/total_layer_count:`, `; FEATURE: Outer wall`) reported `total_layers: 0` and no feedrates were rewritten. Both marker families are now recognized, and `G2`/`G3` arc moves in the outer wall follow the smoothed feedrate too.

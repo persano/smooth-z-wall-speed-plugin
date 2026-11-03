@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.2] - 2026-11-03
+
+### Fixed
+- **Smoothing algorithm now matches Bambu Studio / Creality Print source** (`libslic3r/GCode/Smoothing.cpp`): the per-layer seed is the outer-wall **maximum** speed with overhang moves excluded (previously a minimum that included overhangs), and the rewrite compares against the sampled modal feedrate along the path (previously the line-local `F` with a layer-max fallback). Validated against real before/after exports from both slicers: outer-wall time delta +18s vs upstream +19s (Bambu Studio) and +12s vs +10s (Creality Print), with no other features touched.
+
+### Changed
+- **`smooth_overhang_layers` redefined**: it now only clamps overhang moves faster than the smoothing target, instead of pulling them into the smoothing seed. This removes the aggressive clamp that previously cost +142% outer-wall time on the reference model (now +0.2%).
+
 ## [1.3.1] - 2026-11-03
 
 ### Added
