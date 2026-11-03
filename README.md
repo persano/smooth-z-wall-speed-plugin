@@ -8,7 +8,7 @@
 
 [![CI](https://github.com/persano/smooth-z-wall-speed-plugin/actions/workflows/ci.yml/badge.svg)](https://github.com/persano/smooth-z-wall-speed-plugin/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/persano/smooth-z-wall-speed-plugin)](https://github.com/persano/smooth-z-wall-speed-plugin/releases)
-[![OrcaCloud](https://img.shields.io/badge/OrcaCloud-listing-ff6f00.svg)](https://cloud.orcaslicer.com/app/plugins/plugin-hub/5f796029-31f3-4be8-88ce-29a0cf2d6724)
+[![OrcaCloud](https://img.shields.io/badge/OrcaCloud-Plugin%20Hub-teal.svg)](https://cloud.orcaslicer.com/app/plugins/plugin-hub/5f796029-31f3-4be8-88ce-29a0cf2d6724)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPLv3-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)]()
 [![OrcaSlicer](https://img.shields.io/badge/OrcaSlicer-v2.4%2B%20%7C%20v2.5%20nightly-orange.svg)](https://github.com/OrcaSlicer/OrcaSlicer)
@@ -77,7 +77,13 @@ In Bambu Studio and Creality Print, this feature is a single checkbox with no tu
 
 ## Installation
 
-### Method 1: Manual Zip Install
+### Method 1: OrcaCloud Plugin Hub (Recommended)
+1. Subscribe on the [OrcaCloud Plugin Page](https://cloud.orcaslicer.com/app/plugins/plugin-hub/5f796029-31f3-4be8-88ce-29a0cf2d6724).
+2. In OrcaSlicer, open **File** -> **Plugins** and click **Refresh**.
+3. Check **Activate** for **Smoothing Wall Speed Along Z**.
+4. Restart OrcaSlicer.
+
+### Method 2: Manual Zip Install
 1. Download `smooth_z_wall_speed_plugin.zip` from [Releases](https://github.com/persano/smooth-z-wall-speed-plugin/releases/latest).
 2. Unpack into your OrcaSlicer plugins folder:
    - **Windows**: `%APPDATA%\OrcaSlicer\orca_plugins\smooth_z_wall_speed\`
@@ -85,7 +91,7 @@ In Bambu Studio and Creality Print, this feature is a single checkbox with no tu
    - **macOS**: `~/Library/Application Support/OrcaSlicer/orca_plugins/smooth_z_wall_speed/`
 3. Restart OrcaSlicer.
 
-### Method 2: Python Wheel Install
+### Method 3: Python Wheel Install
 1. Open OrcaSlicer -> **File** -> **Plugins**.
 2. Click **Install from Wheel...** and select `smooth_z_wall_speed-<version>-py3-none-any.whl` from the [latest release](https://github.com/persano/smooth-z-wall-speed-plugin/releases/latest) (or your OS-specific wheel).
 3. Restart OrcaSlicer.
