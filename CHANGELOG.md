@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 2026-11-03
+
+### Added
+- **Styled configuration dialog**: the slicing-pipeline capability now supplies a custom config UI (`has_config_ui` / `get_config_ui`) instead of OrcaSlicer's raw JSON editor, with labeled rows, dropdowns, numeric fields with units, conditional advanced rows, and Restore defaults / Save / Refresh buttons. The tab and the dialog now share one config store, so a save in either place applies everywhere.
+
+### Fixed
+- **Bambu flavour G-code was silently skipped**: the parser only recognized Orca/Prusa markers (`;LAYER_CHANGE`, `;TYPE:Outer wall`), so Bambu exports (`; layer num/total_layer_count:`, `; FEATURE: Outer wall`) produced `total_layers: 0` and no speed changes. Both marker families are now recognized.
+- **Arc segments kept old feedrates**: `G2`/`G3` moves in the outer wall are now sampled and rewritten along with `G0`/`G1` moves.
+
 ## [1.3.0] - 2026-10-29
 
 ### Added

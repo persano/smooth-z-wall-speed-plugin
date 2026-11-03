@@ -5,7 +5,7 @@
 # name = "Smoothing Wall Speed Along Z"
 # description = "Smooths outer wall speed transitions across adjacent Z layers. Features Simple (1:1 Bambu/Creality) and Advanced modes with interactive UI tab."
 # author = "persano"
-# version = "1.3.0"
+# version = "1.3.1"
 # ///
 """Smoothing Wall Speed Along Z Plugin for OrcaSlicer.
 
@@ -34,7 +34,7 @@ except ImportError:
     orca = None
 
 PLUGIN_NAME = "Smoothing Wall Speed Along Z"
-PLUGIN_VERSION = "1.3.0"
+PLUGIN_VERSION = "1.3.1"
 
 # Bambu Studio & Creality Print exact defaults (libslic3r/GCode/Smoothing.cpp)
 BAMBU_CREALITY_DEFAULTS = {
@@ -64,15 +64,21 @@ DEFAULT_CONFIG: Dict[str, Any] = {
 }
 
 RE_LAYER_CHANGE = re.compile(r"^;LAYER_CHANGE")
+RE_LAYER_BAMBU = re.compile(r"^;\s*layer\s+num/total_layer_count\s*:")
 RE_Z_HEIGHT     = re.compile(r"^;(?:Z|HEIGHT):([0-9.]+)")
 RE_Z_GCODE_MOVE = re.compile(r"^[Gg][01]\s+[^;\n]*Z([0-9.]+)")
-RE_TYPE_OUTER   = re.compile(r"^;TYPE:(?:Outer wall|Outer perimeter)", re.IGNORECASE)
-RE_TYPE_OVERHANG= re.compile(r"^;TYPE:(?:Overhang wall|Overhang perimeter)", re.IGNORECASE)
-RE_TYPE_ANY     = re.compile(r"^;TYPE:", re.IGNORECASE)
+# Orca/Prusa write ";TYPE:", Bambu flavour writes "; FEATURE:".
+RE_TYPE_OUTER   = re.compile(r"^;\s*(?:TYPE|FEATURE)\s*:\s*(?:Outer wall|Outer perimeter)\b", re.IGNORECASE)
+RE_TYPE_OVERHANG= re.compile(r"^;\s*(?:TYPE|FEATURE)\s*:\s*(?:Overhang wall|Overhang perimeter)\b", re.IGNORECASE)
+RE_TYPE_ANY     = re.compile(r"^;\s*(?:TYPE|FEATURE)\s*:", re.IGNORECASE)
 RE_SPIRAL_VASE  = re.compile(r"^;\s*(?:spiral_mode|spiral_vase)\s*=\s*1", re.IGNORECASE)
-RE_G_CMD        = re.compile(r"^([Gg][01])(\s+[^;\n]*)?")
+RE_G_CMD        = re.compile(r"^([Gg][0123])(\s+[^;\n]*)?")
 RE_FEEDRATE     = re.compile(r"([Ff])([0-9.]+)")
 RE_EXTRUSION    = re.compile(r"([Ee])([0-9.-]+)")
+
+# Loaded slicing capability, used to share the Orca capability config store
+# between the preset/global config dialog and the "Smooth Z Speed" tab.
+_pipeline_capability: Any = None
 
 
 def get_config_file_path() -> str:
@@ -298,7 +304,7 @@ def smooth_gcode_lines(
     is_overhang_wall = False
 
     for idx, line in enumerate(lines):
-        if RE_LAYER_CHANGE.search(line):
+        if RE_LAYER_CHANGE.search(line) or RE_LAYER_BAMBU.search(line):
             layers.append({
                 "z": current_z,
                 "start_line": idx,
@@ -453,6 +459,208 @@ def smooth_gcode_file(
 
 
 # ---------------------------------------------------------------------------
+# Plugin configuration dialog (styled UI instead of raw JSON)
+# ---------------------------------------------------------------------------
+
+# key, label, unit, visibility rule ("adv" = advanced mode, "algo:<name>" = algorithm)
+CONFIG_UI_NUMBER_FIELDS = (
+    ("gaussian_radius", "Gaussian radius", "Factor", "adv,algo:gaussian"),
+    ("gaussian_window_size", "Kernel window size", "Count", "adv,algo:gaussian"),
+    ("gaussian_stop_threshold_mm_s", "Stop convergence threshold", "mm/s", "adv,algo:gaussian"),
+    ("max_steps_count", "Max relaxation steps", "Count", "adv,algo:gaussian"),
+    ("max_speed_change_per_mm", "Gradient max speed change", "mm/s per mm", "adv,algo:gradient"),
+    ("min_outer_wall_speed_mm_s", "Minimum outer wall speed", "mm/s", "adv"),
+    ("skip_first_layers", "Skip first layers", "Count", "adv"),
+)
+
+CONFIG_UI_BRIDGE = r"""
+let pendingSave = null;
+function persist(values){
+  if (typeof window.orca.onConfig !== 'function'){
+    try { window.orca.saveConfig(values); } catch(error){ return Promise.reject(error); }
+    return Promise.resolve(true);
+  }
+  return new Promise(function(resolve, reject){
+    const timer = setTimeout(function(){
+      pendingSave = null;
+      reject(new Error('no save acknowledgement from Orca'));
+    }, 8000);
+    pendingSave = { values: values, timer: timer, resolve: resolve, reject: reject };
+    try { window.orca.saveConfig(values); }
+    catch(error){ clearTimeout(timer); pendingSave = null; reject(error); }
+  });
+}
+if (typeof window.orca.onConfig === 'function'){
+  window.orca.onConfig(function(config){
+    if (!pendingSave) return;
+    const actual = typeof config === 'string' ? JSON.parse(config) : config;
+    const match = Object.keys(pendingSave.values).every(function(key){ return actual[key] === pendingSave.values[key]; });
+    if (!match) return;
+    const settled = pendingSave;
+    pendingSave = null;
+    clearTimeout(settled.timer);
+    settled.resolve(true);
+  });
+}
+"""
+
+
+def config_page() -> str:
+    """Self-contained HTML config UI used by the plugin configuration dialogs."""
+    rows = "".join(
+        f'<label data-show="{show}">{label}<span>'
+        f'<input id="{key}" type="number" step="any" min="0" required> {unit}'
+        f"</span></label>"
+        for key, label, unit, show in CONFIG_UI_NUMBER_FIELDS
+    )
+    page = r"""<!doctype html><html lang="en"><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smoothing Wall Speed Along Z</title>
+<style>
+:root{color-scheme:light dark;font:14px system-ui,sans-serif}
+body{max-width:780px;margin:20px auto;padding:0 16px}
+h1{font-size:22px;margin-bottom:6px}
+p{line-height:1.5;color:light-dark(#555,#aaa)}
+label{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #8884}
+input[type=number],select{min-width:180px;padding:7px;border:1px solid #886;border-radius:5px;font:inherit;background:light-dark(#fff,#1b1f26);color:inherit}
+button{padding:9px 16px;border:0;border-radius:5px;cursor:pointer;font:inherit;margin-top:16px;margin-right:8px}
+#save{background:var(--orca-accent,#00ae72);color:var(--orca-accent-fg,#fff)}
+#restore,#refresh{background:#881c;color:inherit;border:1px solid #886}
+#status{margin-left:8px;color:light-dark(#555,#aaa)}
+.notice{padding:12px;background:#881a;border-radius:6px}
+small{display:block;margin-top:16px;color:light-dark(#555,#aaa)}
+</style>
+<h1>Smoothing Wall Speed Along Z</h1>
+<p>Smooths outer wall speed transitions across adjacent Z layers to prevent banding and gloss lines. Applied during G-code export.</p>
+<p class="notice">Simple mode matches Bambu Studio and Creality Print 1:1 and needs no tuning. Advanced mode exposes the filter parameters below.</p>
+<div id="settings">
+<label>Enable smoothing<input id="enabled" type="checkbox"></label>
+<label>Plugin mode<span><select id="mode">
+<option value="simple">Simple (Bambu / Creality match)</option>
+<option value="advanced">Advanced</option>
+</select></span></label>
+<label data-show="adv">Smoothing algorithm<span><select id="smoothing_algorithm">
+<option value="gaussian">Gaussian filter</option>
+<option value="gradient">Linear gradient</option>
+</select></span></label>
+__ROWS__
+<label data-show="adv">Smooth overhang slowdowns<input id="smooth_overhang_layers" type="checkbox"></label>
+<button id="restore" type="button">Restore defaults</button><button id="save" type="button">Save</button><button id="refresh" type="button">Refresh</button><span id="status" role="status"></span>
+</div><small>Version __VERSION__  -  GPL-3.0</small>
+<script>
+const defaults = __DEFAULTS__;
+const fields = Object.keys(defaults);
+const status = document.getElementById('status');
+
+function apply(values){
+  for (const key of fields){
+    const el = document.getElementById(key);
+    if (!el) continue;
+    if (typeof defaults[key] === 'boolean') el.checked = !!values[key];
+    else el.value = values[key];
+  }
+  updateGroups();
+}
+
+function updateGroups(){
+  const mode = document.getElementById('mode').value;
+  const algo = document.getElementById('smoothing_algorithm').value;
+  document.querySelectorAll('[data-show]').forEach(function(row){
+    const show = row.getAttribute('data-show').split(',').every(function(rule){
+      if (rule === 'adv') return mode === 'advanced';
+      if (rule === 'algo:gaussian') return algo === 'gaussian';
+      if (rule === 'algo:gradient') return algo === 'gradient';
+      return true;
+    });
+    row.style.display = show ? '' : 'none';
+  });
+}
+
+function collect(){
+  const values = {};
+  for (const key of fields){
+    const el = document.getElementById(key);
+    if (typeof defaults[key] === 'boolean') values[key] = el.checked;
+    else if (typeof defaults[key] === 'string') values[key] = el.value;
+    else {
+      values[key] = Number(el.value);
+      if (el.value.trim() === '' || !Number.isFinite(values[key])) throw new Error('a valid number');
+    }
+  }
+  return values;
+}
+
+async function initialize(){
+  try {
+    let saved = await window.orca.getConfig();
+    if (typeof saved === 'string') saved = JSON.parse(saved);
+    apply(Object.assign({}, defaults, saved || {}));
+    status.textContent = '';
+  } catch(error){
+    status.textContent = 'Could not load settings: ' + error.message;
+  }
+}
+
+document.getElementById('mode').addEventListener('change', updateGroups);
+document.getElementById('smoothing_algorithm').addEventListener('change', updateGroups);
+document.getElementById('refresh').onclick = initialize;
+document.getElementById('save').onclick = async function(){
+  let values;
+  try { values = collect(); }
+  catch(error){ status.textContent = 'Please enter ' + error.message + '.'; return; }
+  status.textContent = 'Saving...';
+  try { await persist(values); status.textContent = 'Saved.'; }
+  catch(error){ status.textContent = 'Save failed: ' + error.message; }
+};
+document.getElementById('restore').onclick = async function(){
+  apply(defaults);
+  status.textContent = 'Saving...';
+  try { await persist(Object.assign({}, defaults)); status.textContent = 'Defaults restored.'; }
+  catch(error){ status.textContent = 'Restore failed: ' + error.message; }
+};
+document.addEventListener('visibilitychange', function(){ if (!document.hidden) initialize(); });
+initialize();
+</script></html>"""
+    return (
+        page.replace("__ROWS__", rows)
+            .replace("__DEFAULTS__", json.dumps(DEFAULT_CONFIG))
+            .replace("__VERSION__", PLUGIN_VERSION)
+            .replace("<script>", "<script>" + CONFIG_UI_BRIDGE, 1)
+    )
+
+
+def merged_capability_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    """Overlay the Orca capability config (preset override or global) onto cfg."""
+    cap = _pipeline_capability
+    if cap is None:
+        return cfg
+    try:
+        loaded = json.loads(cap.get_config() or "{}")
+        if isinstance(loaded, dict):
+            cfg.update(loaded)
+    except Exception:
+        pass
+    return cfg
+
+
+def store_capability_config(cfg: Dict[str, Any]) -> bool:
+    """Write cfg to the Orca capability store so both config UIs agree."""
+    cap = _pipeline_capability
+    if cap is None:
+        return False
+    try:
+        return bool(cap.save_config(json.dumps(cfg)))
+    except Exception:
+        return False
+
+
+def set_pipeline_capability(cap: Any) -> None:
+    """Install (or clear, with None) the loaded slicing capability reference."""
+    global _pipeline_capability
+    _pipeline_capability = cap
+
+
+# ---------------------------------------------------------------------------
 # OrcaSlicer Plugin Integration
 # ---------------------------------------------------------------------------
 
@@ -478,14 +686,16 @@ if orca:
             reply: Dict[str, Any] = {"action": action, "success": True, "message": ""}
 
             if action == "get_config":
-                reply["config"] = load_config()
+                reply["config"] = merged_capability_config(load_config())
                 reply["message"] = "Config loaded."
             elif action == "save_config":
                 new_cfg = data.get("config", {})
                 success, msg = save_config(new_cfg)
                 reply["success"] = success
                 reply["message"] = msg
-                reply["config"] = load_config()
+                if success:
+                    store_capability_config(load_config())
+                reply["config"] = merged_capability_config(load_config())
                 if hasattr(orca, "host") and hasattr(orca.host, "ui"):
                     try:
                         orca.host.ui.message("Smoothing Wall Speed Along Z settings saved successfully!", "Smooth Z Wall Speed", buttons="ok", icon="info")
@@ -495,7 +705,9 @@ if orca:
                 success, msg = save_config(DEFAULT_CONFIG)
                 reply["success"] = success
                 reply["message"] = "Defaults restored."
-                reply["config"] = load_config()
+                if success:
+                    store_capability_config(dict(DEFAULT_CONFIG))
+                reply["config"] = merged_capability_config(load_config())
 
             try:
                 self.post_message(reply)
@@ -503,7 +715,7 @@ if orca:
                 pass
 
         def get_ui(self) -> str:
-            active_cfg = load_config()
+            active_cfg = merged_capability_config(load_config())
             cfg_json = json.dumps(active_cfg)
 
             return f"""<!DOCTYPE html>
@@ -989,20 +1201,24 @@ applyConfigToUI(currentConfig);
         def get_name(self) -> str:
             return PLUGIN_NAME
 
+        def on_load(self) -> None:
+            set_pipeline_capability(self)
+
+        def on_unload(self) -> None:
+            if _pipeline_capability is self:
+                set_pipeline_capability(None)
+
         def get_default_config(self) -> Dict[str, Any]:
             return DEFAULT_CONFIG
 
+        def has_config_ui(self) -> bool:
+            return True
+
+        def get_config_ui(self) -> str:
+            return config_page()
+
         def _get_active_config(self) -> Dict[str, Any]:
-            cfg = load_config()
-            try:
-                raw = self.get_config()
-                if raw:
-                    loaded = json.loads(raw)
-                    if isinstance(loaded, dict):
-                        cfg.update(loaded)
-            except Exception:
-                pass
-            return cfg
+            return merged_capability_config(load_config())
 
         def execute(self, ctx: Any) -> Any:
             if ctx.step != orca.slicing.Step.psGCodePostProcess:

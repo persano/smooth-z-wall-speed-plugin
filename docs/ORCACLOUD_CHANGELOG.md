@@ -1,4 +1,9 @@
 # OrcaCloud Release Changelog
+## v1.3.1 - Bambu flavour G-code support & styled config dialog (2026-11-03)
+### Fixed: Bambu flavour exports were silently skipped
+- The parser only recognized Orca/Prusa markers (`;LAYER_CHANGE`, `;TYPE:Outer wall`), so Bambu flavour exports (`; layer num/total_layer_count:`, `; FEATURE: Outer wall`) reported `total_layers: 0` and no feedrates were rewritten. Both marker families are now recognized, and `G2`/`G3` arc moves in the outer wall follow the smoothed feedrate too.
+### Styled plugin configuration dialog
+- The slicing-pipeline capability now renders a custom config UI (labels, dropdowns, numeric fields with units, conditional advanced rows, Restore defaults / Save / Refresh) instead of the raw JSON editor, and shares one config store with the "Smooth Z Speed" tab.
 
 ## v1.3.0 — Interactive UI Tab, Live Curve Visualizer & Slicing Pipeline Sync (2026-10-29)
 
