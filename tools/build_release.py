@@ -41,23 +41,25 @@ def build_wheel(whl_filename: str):
     files[f"{PLUGIN_MODULE}/__init__.py"] = code_data
     files[f"{PLUGIN_MODULE}/{PLUGIN_MODULE}.py"] = code_data
 
-    for fn in (
-        "icon.png",
-        "icon.jpg",
-        "icon_orcacloud_320x320.png",
-        "icon_orcacloud_320x320.jpg",
-        "CHANGELOG.md",
-        "ORCACLOUD_CHANGELOG.md",
-        "ORCACLOUD_DESCRIPTION.md",
-        ".install_state.json",
-        "README.md",
-        "resources/images/icon.png",
-        "resources/images/icon_1024.jpg",
-        "resources/images/orcaslicer_plugin_tab_preview.jpg",
+    for src, arcname in (
+        ("assets/icon.png", "icon.png"),
+        ("assets/icon.jpg", "icon.jpg"),
+        ("assets/icon_orcacloud_320x320.png", "icon_orcacloud_320x320.png"),
+        ("assets/icon_orcacloud_320x320.jpg", "icon_orcacloud_320x320.jpg"),
+        ("CHANGELOG.md", "CHANGELOG.md"),
+        ("docs/ORCACLOUD_CHANGELOG.md", "ORCACLOUD_CHANGELOG.md"),
+        ("docs/ORCACLOUD_DESCRIPTION.md", "ORCACLOUD_DESCRIPTION.md"),
+        (".install_state.json", ".install_state.json"),
+        ("README.md", "README.md"),
+        ("resources/images/icon.png", "resources/images/icon.png"),
+        ("resources/images/icon_1024.jpg", "resources/images/icon_1024.jpg"),
+        ("resources/images/orcaslicer_plugin_tab_preview.jpg", "resources/images/orcaslicer_plugin_tab_preview.jpg"),
     ):
-        if os.path.exists(fn):
-            with open(fn, "rb") as f:
-                files[f"{PLUGIN_MODULE}/{fn}"] = f.read()
+        # arcname stays the original path: the plugin loads icon.png from its
+        # own package root at runtime.
+        if os.path.exists(src):
+            with open(src, "rb") as f:
+                files[f"{PLUGIN_MODULE}/{arcname}"] = f.read()
 
     files[f"{DIST_INFO}/METADATA"] = METADATA_CONTENT.encode("utf-8")
     files[f"{DIST_INFO}/WHEEL"] = WHEEL_CONTENT.encode("utf-8")
@@ -85,42 +87,43 @@ def build_wheel(whl_filename: str):
     print(f"Built {whl_filename}: {os.path.getsize(whl_filename):,} bytes (RECORD entries: {len(record_lines)})")
 
 
-def build_zip(zip_filename: str = f"{PLUGIN_MODULE}_plugin.zip"):
+def build_zip(zip_filename: str = f"dist/{PLUGIN_MODULE}_plugin.zip"):
     items_to_pack = [
-        f"{PLUGIN_MODULE}.py",
-        ".install_state.json",
-        "README.md",
-        "CHANGELOG.md",
-        "ORCACLOUD_CHANGELOG.md",
-        "ORCACLOUD_DESCRIPTION.md",
-        "LICENSE",
-        "icon.png",
-        "icon.jpg",
-        "icon_orcacloud_320x320.png",
-        "icon_orcacloud_320x320.jpg",
-        "resources/images/icon.png",
-        "resources/images/icon_1024.jpg",
-        "resources/images/orcaslicer_plugin_tab_preview.jpg",
+        (f"{PLUGIN_MODULE}.py", f"{PLUGIN_MODULE}.py"),
+        (".install_state.json", ".install_state.json"),
+        ("README.md", "README.md"),
+        ("CHANGELOG.md", "CHANGELOG.md"),
+        ("docs/ORCACLOUD_CHANGELOG.md", "ORCACLOUD_CHANGELOG.md"),
+        ("docs/ORCACLOUD_DESCRIPTION.md", "ORCACLOUD_DESCRIPTION.md"),
+        ("LICENSE", "LICENSE"),
+        ("assets/icon.png", "icon.png"),
+        ("assets/icon.jpg", "icon.jpg"),
+        ("assets/icon_orcacloud_320x320.png", "icon_orcacloud_320x320.png"),
+        ("assets/icon_orcacloud_320x320.jpg", "icon_orcacloud_320x320.jpg"),
+        ("resources/images/icon.png", "resources/images/icon.png"),
+        ("resources/images/icon_1024.jpg", "resources/images/icon_1024.jpg"),
+        ("resources/images/orcaslicer_plugin_tab_preview.jpg", "resources/images/orcaslicer_plugin_tab_preview.jpg"),
     ]
 
     with zipfile.ZipFile(zip_filename, "w", compression=zipfile.ZIP_DEFLATED) as z:
-        for item in items_to_pack:
-            if os.path.exists(item):
-                z.write(item, item)
+        for src, arcname in items_to_pack:
+            if os.path.exists(src):
+                z.write(src, arcname)
 
     print(f"Built {zip_filename}: {os.path.getsize(zip_filename):,} bytes")
 
 
 if __name__ == "__main__":
     os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    
+    os.makedirs("dist", exist_ok=True)
+
     # Standard Python universal wheel
-    build_wheel(f"{PLUGIN_MODULE}-{VERSION}-py3-none-any.whl")
-    
+    build_wheel(f"dist/{PLUGIN_MODULE}-{VERSION}-py3-none-any.whl")
+
     # OrcaCloud platform-tagged wheels (matching OrcaCloud validator convention)
-    build_wheel(f"{PLUGIN_MODULE}_win_x86_64.whl")
-    build_wheel(f"{PLUGIN_MODULE}_linux_x86_64.whl")
-    build_wheel(f"{PLUGIN_MODULE}_macosx_arm64.whl")
+    build_wheel(f"dist/{PLUGIN_MODULE}_win_x86_64.whl")
+    build_wheel(f"dist/{PLUGIN_MODULE}_linux_x86_64.whl")
+    build_wheel(f"dist/{PLUGIN_MODULE}_macosx_arm64.whl")
 
     # Drop-in zip package
-    build_zip(f"{PLUGIN_MODULE}_plugin.zip")
+    build_zip(f"dist/{PLUGIN_MODULE}_plugin.zip")

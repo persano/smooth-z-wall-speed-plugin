@@ -5,13 +5,17 @@ __pycache__/
 .venv/
 .venv*/
 build/
-dist/
+dist/*
 *.egg-info/
 .pytest_cache/
 .coverage
 htmlcov/
 .DS_Store
 Thumbs.db
+# committed build outputs so releases and the publish workflow can
+# pick them up from dist/
+!dist/*.whl
+!dist/*.zip
 
 smooth_z_wall_speed_config.json
 

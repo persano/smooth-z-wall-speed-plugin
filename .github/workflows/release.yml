@@ -39,15 +39,15 @@ jobs:
 
       - name: Generate Checksums
         run: |
-          sha256sum *.whl *.zip > SHA256SUMS.txt
+          sha256sum dist/*.whl dist/*.zip > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            *.whl
-            *.zip
+            dist/*.whl
+            dist/*.zip
             SHA256SUMS.txt
           generate_release_notes: true
           draft: false

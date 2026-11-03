@@ -27,7 +27,7 @@ permissions:
 
 env:
   # Space-separated globs matching the plugin files to upload (.whl / .py).
-  PLUGIN_FILES: "*_win_x86_64.whl *_linux_x86_64.whl *_macosx_arm64.whl"
+  PLUGIN_FILES: "dist/*_win_x86_64.whl dist/*_linux_x86_64.whl dist/*_macosx_arm64.whl"
 
 jobs:
   publish:
@@ -61,9 +61,9 @@ jobs:
           changelog="$(jq -r '.release.body // ""' "$GITHUB_EVENT_PATH" 2>/dev/null || echo "")"
           if [ -z "$changelog" ]; then
             # Dispatch runs carry no release body; fall back to the
-            # ORCACLOUD_CHANGELOG.md section for the version.
+            # docs/ORCACLOUD_CHANGELOG.md section for the version.
             changelog="$(awk -v pat="## $version " '$0 ~ "^"pat {p=1; next} /^## / {p=0} p {print}' \
-              ORCACLOUD_CHANGELOG.md 2>/dev/null || true)"
+              docs/ORCACLOUD_CHANGELOG.md 2>/dev/null || true)"
           fi
           if [ -z "$changelog" ]; then
             changelog="Automated release from GitHub"
