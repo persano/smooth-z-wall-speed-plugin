@@ -8,6 +8,7 @@
 
 [![CI](https://github.com/persano/smooth-z-wall-speed-plugin/actions/workflows/ci.yml/badge.svg)](https://github.com/persano/smooth-z-wall-speed-plugin/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/persano/smooth-z-wall-speed-plugin)](https://github.com/persano/smooth-z-wall-speed-plugin/releases)
+[![OrcaCloud](https://img.shields.io/badge/OrcaCloud-listing-ff6f00.svg)](https://cloud.orcaslicer.com/app/plugins/plugin-hub/5f796029-31f3-4be8-88ce-29a0cf2d6724)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPLv3-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)]()
 [![OrcaSlicer](https://img.shields.io/badge/OrcaSlicer-v2.4%2B%20%7C%20v2.5%20nightly-orange.svg)](https://github.com/OrcaSlicer/OrcaSlicer)
