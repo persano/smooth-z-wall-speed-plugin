@@ -7,7 +7,7 @@
 # Smoothing Wall Speed Along Z — OrcaSlicer Plugin
 
 [![CI](https://github.com/persano/smooth-z-wall-speed-plugin/actions/workflows/ci.yml/badge.svg)](https://github.com/persano/smooth-z-wall-speed-plugin/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-v1.3.0-blue.svg)](https://github.com/persano/smooth-z-wall-speed-plugin/releases)
+[![Release](https://img.shields.io/github/v/release/persano/smooth-z-wall-speed-plugin)](https://github.com/persano/smooth-z-wall-speed-plugin/releases)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPLv3-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)]()
 [![OrcaSlicer](https://img.shields.io/badge/OrcaSlicer-v2.4%2B%20%7C%20v2.5%20nightly-orange.svg)](https://github.com/OrcaSlicer/OrcaSlicer)
@@ -86,7 +86,7 @@ In Bambu Studio and Creality Print, this feature is a single checkbox with no tu
 
 ### Method 2: Python Wheel Install
 1. Open OrcaSlicer -> **File** -> **Plugins**.
-2. Click **Install from Wheel...** and select `smooth_z_wall_speed-1.3.0-py3-none-any.whl` (or your OS-specific wheel).
+2. Click **Install from Wheel...** and select `smooth_z_wall_speed-<version>-py3-none-any.whl` from the [latest release](https://github.com/persano/smooth-z-wall-speed-plugin/releases/latest) (or your OS-specific wheel).
 3. Restart OrcaSlicer.
 
 ---
@@ -127,7 +127,7 @@ Inside OrcaSlicer (**Process -> Others -> Plugin Configuration**), the following
 | `max_speed_change_per_mm` | `50.0` | Maximum speed change in mm/s per 1 mm Z when in `"gradient"` mode. |
 | `min_outer_wall_speed_mm_s` | `10.0` | Floor speed clamp in mm/s. |
 | `skip_first_layers` | `1` | Number of initial layers to leave untouched (ensures bed adhesion). |
-| `smooth_overhang_layers` | `true` | If true, overhang speed drops are factored into adjacent outer wall speed smoothing. |
+| `smooth_overhang_layers` | `true` | If true, overhang moves faster than the smoothing target are clamped down to it. Overhangs are never included in the smoothing seed, matching Bambu/Creality behavior. |
 
 ---
 
