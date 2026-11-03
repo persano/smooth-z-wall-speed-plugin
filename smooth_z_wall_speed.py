@@ -60,7 +60,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "max_speed_change_per_mm": 50.0,      # For gradient mode: max speed delta mm/s per 1 mm Z
     "min_outer_wall_speed_mm_s": 10.0,    # Floor clamp in mm/s
     "skip_first_layers": 1,               # Number of initial layers to leave untouched
-    "smooth_overhang_layers": True,       # Factor overhang outer wall slowdowns into Z smoothing
+    "smooth_overhang_layers": True,       # Also clamp faster overhang wall moves to the smoothed speed
 }
 
 RE_LAYER_CHANGE = re.compile(r"^;LAYER_CHANGE")
@@ -311,6 +311,7 @@ def smooth_gcode_lines(
                 "outer_speeds": [],
                 "outer_move_indices": [],
                 "overhang_speeds": [],
+                "overhang_move_indices": [],
             })
             is_outer_wall = False
             is_overhang_wall = False
@@ -355,6 +356,7 @@ def smooth_gcode_lines(
         elif is_overhang_wall and RE_G_CMD.match(line) and smooth_overhang:
             if has_extrusion(line):
                 layers[-1]["overhang_speeds"].append(modal_f)
+                layers[-1]["overhang_move_indices"].append(idx)
 
     total_layers = len(layers)
     stats["total_layers"] = total_layers
@@ -363,29 +365,21 @@ def smooth_gcode_lines(
         stats["skipped_reason"] = "not_enough_layers"
         return lines, stats
 
+    # Bambu/Creality seed each cooling node with its own maximum feedrate
+    # (SmoothCalculator::build_node: filter_feedrate = max_feedrate) and only
+    # ever lower faster lines, so slow moves never drag a whole layer down.
+    # Post-processing has no node ids, so the layer's outer-wall maximum is
+    # the closest available stand-in. Overhang moves stay out of the seed.
     baseline_f: List[float] = []
-    constraint_f: List[float] = []
 
     for lyr in layers:
-        all_speeds = list(lyr["outer_speeds"])
-        if smooth_overhang and lyr["overhang_speeds"]:
-            all_speeds.extend(lyr["overhang_speeds"])
-
         if lyr["outer_speeds"]:
-            sorted_speeds = sorted(lyr["outer_speeds"])
-            nominal = sorted_speeds[len(sorted_speeds) // 2]
-            baseline_f.append(nominal)
+            baseline_f.append(max(lyr["outer_speeds"]))
         else:
             prev = baseline_f[-1] if baseline_f else 6000.0
             baseline_f.append(prev)
 
-        if all_speeds:
-            constraint_f.append(min(all_speeds))
-        else:
-            prev_c = constraint_f[-1] if constraint_f else 6000.0
-            constraint_f.append(prev_c)
-
-    initial_f = [min(baseline_f[i], constraint_f[i]) for i in range(total_layers)]
+    initial_f = list(baseline_f)
 
     if smoothing_algorithm == "gaussian":
         smoothed_f, steps = apply_gaussian_smoothing(
@@ -428,12 +422,17 @@ def smooth_gcode_lines(
 
         if target_speed < (orig_nominal - 30.0):
             smoothed_layers_count += 1
-            for line_idx in layers[i]["outer_move_indices"]:
-                orig_line = output_lines[line_idx]
-                line_f = parse_feedrate(orig_line) or orig_nominal
-                if line_f > target_speed:
-                    output_lines[line_idx] = set_feedrate_on_line(orig_line, target_speed)
-                    updated_moves += 1
+
+        # Compare against the modal speed each move actually ran at, not the
+        # F token on its own line: Bambu omits F on continuation moves.
+        moves = list(zip(layers[i]["outer_move_indices"], layers[i]["outer_speeds"]))
+        if smooth_overhang:
+            moves.extend(zip(layers[i]["overhang_move_indices"], layers[i]["overhang_speeds"]))
+
+        for line_idx, sampled_f in moves:
+            if sampled_f > target_speed:
+                output_lines[line_idx] = set_feedrate_on_line(output_lines[line_idx], target_speed)
+                updated_moves += 1
 
     stats["smoothed_layers"] = smoothed_layers_count
     stats["updated_moves"] = updated_moves
@@ -544,7 +543,7 @@ small{display:block;margin-top:16px;color:light-dark(#555,#aaa)}
 <option value="gradient">Linear gradient</option>
 </select></span></label>
 __ROWS__
-<label data-show="adv">Smooth overhang slowdowns<input id="smooth_overhang_layers" type="checkbox"></label>
+<label data-show="adv">Smooth overhang wall moves<input id="smooth_overhang_layers" type="checkbox"></label>
 <button id="restore" type="button">Restore defaults</button><button id="save" type="button">Save</button><button id="refresh" type="button">Refresh</button><span id="status" role="status"></span>
 </div><small>Version __VERSION__  -  GPL-3.0</small>
 <script>
@@ -1030,7 +1029,7 @@ if orca:
       <div class="switch-row">
         <div>
           <div style="font-size: 13.5px; font-weight: 600;">Smooth Overhang Layers</div>
-          <div style="font-size: 12px; color: var(--text-muted);">Factor outer wall slowdowns at overhangs into vertical smoothing</div>
+          <div style="font-size: 12px; color: var(--text-muted);">Also clamp faster overhang wall moves to the smoothed speed</div>
         </div>
         <label class="switch">
           <input type="checkbox" id="adv-overhang" checked>

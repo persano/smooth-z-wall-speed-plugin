@@ -243,6 +243,27 @@ class TestSmoothZWallSpeed(unittest.TestCase):
         self.assertGreater(stats["updated_moves"], 0)
         self.assertNotEqual(output_lines[arc_index], lines[arc_index])
 
+    def test_overhang_slowdown_does_not_drag_layers_down(self):
+        """A slow overhang move must not clamp layers whose outer wall is fast.
+
+        Bambu/Creality seed with the node maximum and never fold overhang
+        speeds into that seed (SmoothCalculator::build_node).
+        """
+        lines = ["; HEADER_START\n"]
+        for l_idx in range(6):
+            lines.append(f"; layer num/total_layer_count: {l_idx + 1}/6\n")
+            lines.append(f"G1 Z{(l_idx + 1) * 0.2:.2f} F6000\n")
+            lines.append("; FEATURE: Outer wall\n")
+            lines.append("G1 X10 Y10 E0.5 F30000\n")
+            lines.append("G1 X20 Y10 E0.5\n")
+            if l_idx == 3:
+                lines.append("; FEATURE: Overhang wall\n")
+                lines.append("G1 X25 Y20 E0.3 F600\n")
+
+        output_lines, stats = smooth_gcode_lines(lines, {"mode": "simple"})
+        self.assertEqual(stats["updated_moves"], 0)
+        self.assertEqual("".join(output_lines), "".join(lines))
+
     def test_spiral_vase_skipped(self):
         lines = generate_synthetic_gcode(num_layers=10, spiral_vase=True)
         _, stats = smooth_gcode_lines(lines)
