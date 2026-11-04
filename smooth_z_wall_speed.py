@@ -5,7 +5,7 @@
 # name = "Smoothing Wall Speed Along Z"
 # description = "Smooths outer wall speed transitions across adjacent Z layers. Features Simple (1:1 Bambu/Creality) and Advanced modes with interactive UI tab."
 # author = "persano"
-# version = "1.3.2"
+# version = "1.4.0"
 # ///
 """Smoothing Wall Speed Along Z Plugin for OrcaSlicer.
 
@@ -34,7 +34,7 @@ except ImportError:
     orca = None
 
 PLUGIN_NAME = "Smoothing Wall Speed Along Z"
-PLUGIN_VERSION = "1.3.2"
+PLUGIN_VERSION = "1.4.0"
 
 # Bambu Studio & Creality Print exact defaults (libslic3r/GCode/Smoothing.cpp)
 BAMBU_CREALITY_DEFAULTS = {
@@ -61,6 +61,8 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     "min_outer_wall_speed_mm_s": 10.0,    # Floor clamp in mm/s
     "skip_first_layers": 1,               # Number of initial layers to leave untouched
     "smooth_overhang_layers": True,       # Also clamp faster overhang wall moves to the smoothed speed
+    "smooth_outer_walls": True,           # Smooth outer wall speeds along Z
+    "smooth_internal_walls": False,       # Also smooth inner wall speeds along Z (own series)
 }
 
 RE_LAYER_CHANGE = re.compile(r"^;LAYER_CHANGE")
@@ -69,6 +71,7 @@ RE_Z_HEIGHT     = re.compile(r"^;(?:Z|HEIGHT):([0-9.]+)")
 RE_Z_GCODE_MOVE = re.compile(r"^[Gg][01]\s+[^;\n]*Z([0-9.]+)")
 # Orca/Prusa write ";TYPE:", Bambu flavour writes "; FEATURE:".
 RE_TYPE_OUTER   = re.compile(r"^;\s*(?:TYPE|FEATURE)\s*:\s*(?:Outer wall|Outer perimeter)\b", re.IGNORECASE)
+RE_TYPE_INNER   = re.compile(r"^;\s*(?:TYPE|FEATURE)\s*:\s*(?:Inner wall|Inner perimeter)\b", re.IGNORECASE)
 RE_TYPE_OVERHANG= re.compile(r"^;\s*(?:TYPE|FEATURE)\s*:\s*(?:Overhang wall|Overhang perimeter)\b", re.IGNORECASE)
 RE_TYPE_ANY     = re.compile(r"^;\s*(?:TYPE|FEATURE)\s*:", re.IGNORECASE)
 RE_SPIRAL_VASE  = re.compile(r"^;\s*(?:spiral_mode|spiral_vase)\s*=\s*1", re.IGNORECASE)
@@ -291,6 +294,12 @@ def smooth_gcode_lines(
         max_accel_z = float(cfg.get("max_speed_change_per_mm", 50.0))
 
     stats["algorithm"] = smoothing_algorithm
+    smooth_outer = bool(cfg.get("smooth_outer_walls", True))
+    smooth_internal = bool(cfg.get("smooth_internal_walls", False))
+
+    if not smooth_outer and not smooth_internal:
+        stats["skipped_reason"] = "no_walls_selected"
+        return lines, stats
 
     for line in lines[:250]:
         if RE_SPIRAL_VASE.search(line):
@@ -302,6 +311,7 @@ def smooth_gcode_lines(
     modal_f: float = 6000.0
     is_outer_wall = False
     is_overhang_wall = False
+    is_inner_wall = False
 
     for idx, line in enumerate(lines):
         if RE_LAYER_CHANGE.search(line) or RE_LAYER_BAMBU.search(line):
@@ -312,9 +322,12 @@ def smooth_gcode_lines(
                 "outer_move_indices": [],
                 "overhang_speeds": [],
                 "overhang_move_indices": [],
+                "inner_speeds": [],
+                "inner_move_indices": [],
             })
             is_outer_wall = False
             is_overhang_wall = False
+            is_inner_wall = False
             continue
 
         m_z = RE_Z_HEIGHT.search(line)
@@ -332,14 +345,22 @@ def smooth_gcode_lines(
         if RE_TYPE_OUTER.search(line):
             is_outer_wall = True
             is_overhang_wall = False
+            is_inner_wall = False
             continue
         elif RE_TYPE_OVERHANG.search(line):
             is_outer_wall = False
             is_overhang_wall = True
+            is_inner_wall = False
+            continue
+        elif RE_TYPE_INNER.search(line):
+            is_outer_wall = False
+            is_overhang_wall = False
+            is_inner_wall = smooth_internal
             continue
         elif RE_TYPE_ANY.search(line):
             is_outer_wall = False
             is_overhang_wall = False
+            is_inner_wall = False
             continue
 
         f_val = parse_feedrate(line)
@@ -357,6 +378,10 @@ def smooth_gcode_lines(
             if has_extrusion(line):
                 layers[-1]["overhang_speeds"].append(modal_f)
                 layers[-1]["overhang_move_indices"].append(idx)
+        elif is_inner_wall and RE_G_CMD.match(line):
+            if has_extrusion(line):
+                layers[-1]["inner_speeds"].append(modal_f)
+                layers[-1]["inner_move_indices"].append(idx)
 
     total_layers = len(layers)
     stats["total_layers"] = total_layers
@@ -381,58 +406,84 @@ def smooth_gcode_lines(
 
     initial_f = list(baseline_f)
 
-    if smoothing_algorithm == "gaussian":
-        smoothed_f, steps = apply_gaussian_smoothing(
-            initial_f,
-            skip_layers=skip_layers,
-            window_size=win_size,
-            radius=radius,
-            stop_threshold_mm_min=stop_thresh_mm_min,
-            max_steps=max_steps,
-        )
+    def compute_targets(baseline: List[float]) -> Tuple[List[float], int]:
+        """Smooth one speed series along Z and apply the floor clamp."""
+        if smoothing_algorithm == "gaussian":
+            smoothed, steps = apply_gaussian_smoothing(
+                baseline,
+                skip_layers=skip_layers,
+                window_size=win_size,
+                radius=radius,
+                stop_threshold_mm_min=stop_thresh_mm_min,
+                max_steps=max_steps,
+            )
+        else:
+            smoothed = list(baseline)
+            for i in range(skip_layers + 1, total_layers):
+                dz = abs(layers[i]["z"] - layers[i - 1]["z"])
+                if dz < 1e-4:
+                    dz = 0.2
+                max_df = max_accel_z * 60.0 * dz
+                if smoothed[i] > smoothed[i - 1] + max_df:
+                    smoothed[i] = smoothed[i - 1] + max_df
+
+            for i in range(total_layers - 2, skip_layers - 1, -1):
+                dz = abs(layers[i + 1]["z"] - layers[i]["z"])
+                if dz < 1e-4:
+                    dz = 0.2
+                max_df = max_accel_z * 60.0 * dz
+                if smoothed[i] > smoothed[i + 1] + max_df:
+                    smoothed[i] = smoothed[i + 1] + max_df
+            steps = 0
+
+        # Floor speed clamp
+        return [max(min_f, val) for val in smoothed], steps
+
+    smoothed_f: Optional[List[float]] = None
+    if smooth_outer:
+        smoothed_f, steps = compute_targets(initial_f)
         stats["steps_converged"] = steps
-    else:
-        smoothed_f = list(initial_f)
-        for i in range(skip_layers + 1, total_layers):
-            dz = abs(layers[i]["z"] - layers[i - 1]["z"])
-            if dz < 1e-4:
-                dz = 0.2
-            max_df = max_accel_z * 60.0 * dz
-            if smoothed_f[i] > smoothed_f[i - 1] + max_df:
-                smoothed_f[i] = smoothed_f[i - 1] + max_df
 
-        for i in range(total_layers - 2, skip_layers - 1, -1):
-            dz = abs(layers[i + 1]["z"] - layers[i]["z"])
-            if dz < 1e-4:
-                dz = 0.2
-            max_df = max_accel_z * 60.0 * dz
-            if smoothed_f[i] > smoothed_f[i + 1] + max_df:
-                smoothed_f[i] = smoothed_f[i + 1] + max_df
-
-    # Floor speed clamp
-    smoothed_f = [max(min_f, val) for val in smoothed_f]
+    # Inner walls run their own series so fast inner speeds never weaken the
+    # outer wall target, and slow inner moves are never raised.
+    targets_inner: Optional[List[float]] = None
+    if smooth_internal and any(lyr["inner_speeds"] for lyr in layers):
+        baseline_inner: List[float] = []
+        for lyr in layers:
+            if lyr["inner_speeds"]:
+                baseline_inner.append(max(lyr["inner_speeds"]))
+            else:
+                baseline_inner.append(baseline_inner[-1] if baseline_inner else 6000.0)
+        targets_inner = compute_targets(baseline_inner)[0]
 
     output_lines = list(lines)
     updated_moves = 0
     smoothed_layers_count = 0
 
     for i in range(skip_layers, total_layers):
-        target_speed = smoothed_f[i]
-        orig_nominal = baseline_f[i]
+        if smoothed_f is not None:
+            target_speed = smoothed_f[i]
+            orig_nominal = baseline_f[i]
 
-        if target_speed < (orig_nominal - 30.0):
-            smoothed_layers_count += 1
+            if target_speed < (orig_nominal - 30.0):
+                smoothed_layers_count += 1
 
-        # Compare against the modal speed each move actually ran at, not the
-        # F token on its own line: Bambu omits F on continuation moves.
-        moves = list(zip(layers[i]["outer_move_indices"], layers[i]["outer_speeds"]))
-        if smooth_overhang:
-            moves.extend(zip(layers[i]["overhang_move_indices"], layers[i]["overhang_speeds"]))
+            # Compare against the modal speed each move actually ran at, not the
+            # F token on its own line: Bambu omits F on continuation moves.
+            moves = list(zip(layers[i]["outer_move_indices"], layers[i]["outer_speeds"]))
+            if smooth_overhang:
+                moves.extend(zip(layers[i]["overhang_move_indices"], layers[i]["overhang_speeds"]))
 
-        for line_idx, sampled_f in moves:
-            if sampled_f > target_speed:
-                output_lines[line_idx] = set_feedrate_on_line(output_lines[line_idx], target_speed)
-                updated_moves += 1
+            for line_idx, sampled_f in moves:
+                if sampled_f > target_speed:
+                    output_lines[line_idx] = set_feedrate_on_line(output_lines[line_idx], target_speed)
+                    updated_moves += 1
+
+        if targets_inner is not None:
+            for line_idx, sampled_f in zip(layers[i]["inner_move_indices"], layers[i]["inner_speeds"]):
+                if sampled_f > targets_inner[i]:
+                    output_lines[line_idx] = set_feedrate_on_line(output_lines[line_idx], targets_inner[i])
+                    updated_moves += 1
 
     stats["smoothed_layers"] = smoothed_layers_count
     stats["updated_moves"] = updated_moves
@@ -534,6 +585,8 @@ small{display:block;margin-top:16px;color:light-dark(#555,#aaa)}
 <p class="notice">Simple mode matches Bambu Studio and Creality Print 1:1 and needs no tuning. Advanced mode exposes the filter parameters below.</p>
 <div id="settings">
 <label>Enable smoothing<input id="enabled" type="checkbox"></label>
+<label>Smooth outer wall moves<input id="smooth_outer_walls" type="checkbox"></label>
+<label>Smooth internal wall moves<input id="smooth_internal_walls" type="checkbox"></label>
 <label>Plugin mode<span><select id="mode">
 <option value="simple">Simple (Bambu / Creality match)</option>
 <option value="advanced">Advanced</option>
@@ -983,6 +1036,28 @@ if orca:
       </div>
     </div>
 
+    <div class="switch-row">
+      <div>
+        <div style="font-size: 13.5px; font-weight: 600;">Smooth Outer Walls</div>
+        <div style="font-size: 12px; color: var(--text-muted);">Smooth outer wall speed transitions along Z (on by default)</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="opt-outer" checked>
+        <span class="slider"></span>
+      </label>
+    </div>
+
+    <div class="switch-row">
+      <div>
+        <div style="font-size: 13.5px; font-weight: 600;">Smooth Internal Walls</div>
+        <div style="font-size: 12px; color: var(--text-muted);">Also smooth inner wall speed transitions along Z (separate series, off by default)</div>
+      </div>
+      <label class="switch">
+        <input type="checkbox" id="opt-internal">
+        <span class="slider"></span>
+      </label>
+    </div>
+
     <div id="advanced-panel" style="display: none;">
       <div class="ctrl-group">
         <div class="ctrl-label">
@@ -1104,6 +1179,12 @@ function applyConfigToUI(cfg) {{
   if (cfg.smooth_overhang_layers !== undefined) {{
     document.getElementById('adv-overhang').checked = !!cfg.smooth_overhang_layers;
   }}
+  if (cfg.smooth_outer_walls !== undefined) {{
+    document.getElementById('opt-outer').checked = !!cfg.smooth_outer_walls;
+  }}
+  if (cfg.smooth_internal_walls !== undefined) {{
+    document.getElementById('opt-internal').checked = !!cfg.smooth_internal_walls;
+  }}
   updateCurve();
 }}
 
@@ -1158,6 +1239,8 @@ function saveSettings() {{
   currentConfig.gaussian_stop_threshold_mm_s = parseFloat(document.getElementById('adv-thresh').value);
   currentConfig.skip_first_layers = parseInt(document.getElementById('adv-skip').value);
   currentConfig.smooth_overhang_layers = document.getElementById('adv-overhang').checked;
+  currentConfig.smooth_outer_walls = document.getElementById('opt-outer').checked;
+  currentConfig.smooth_internal_walls = document.getElementById('opt-internal').checked;
 
   if (window.orca && typeof window.orca.postMessage === 'function') {{
     window.orca.postMessage({{ action: 'save_config', config: currentConfig }});

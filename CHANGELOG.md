@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-11-04
+
+### Added
+- **Per wall checkboxes**: `smooth_outer_walls` (default on) and `smooth_internal_walls` (default off) let each wall be smoothed independently, requested in OrcaSlicer/OrcaSlicer#16399. Inner walls get their own smoothing series seeded by the per-layer inner-wall maximum, so fast inner moves never weaken the outer wall target and slow inner moves are never raised. With both toggles off the plugin leaves the file untouched. Available in both config dialogs and in simple and advanced modes.
+
 ## [1.3.2] - 2026-11-03
 
 ### Fixed

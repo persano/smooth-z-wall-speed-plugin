@@ -135,6 +135,8 @@ Inside OrcaSlicer (**Process -> Others -> Plugin Configuration**), the following
 | `min_outer_wall_speed_mm_s` | `10.0` | Floor speed clamp in mm/s. |
 | `skip_first_layers` | `1` | Number of initial layers to leave untouched (ensures bed adhesion). |
 | `smooth_overhang_layers` | `true` | If true, overhang moves faster than the smoothing target are clamped down to it. Overhangs are never included in the smoothing seed, matching Bambu/Creality behavior. |
+| `smooth_outer_walls` | `true` | If true, outer wall speeds are smoothed along Z. Uncheck to leave the outer wall alone. |
+| `smooth_internal_walls` | `false` | If true, inner wall speeds are smoothed along Z as well. Inner walls use their own series, so fast inner moves never weaken the outer wall target and slow inner moves are never raised. With both wall toggles off the plugin does nothing. |
 
 ---
 

@@ -115,6 +115,20 @@ def generate_synthetic_bambu_gcode(
     return lines
 
 
+def generate_inner_dip_gcode(num_layers=8, dip_layer_idx=4, dip_speed=3000.0):
+    """Inner wall speed dips on one layer, outer wall stays constant."""
+    lines = ["; HEADER_START\n"]
+    for l_idx in range(num_layers):
+        lines.append(";LAYER_CHANGE\n")
+        lines.append(f";Z:{(l_idx + 1) * 0.2:.2f}\n")
+        lines.append(";TYPE:Inner wall\n")
+        inner_f = dip_speed if l_idx == dip_layer_idx else 15000.0
+        lines.append(f"G1 X10 Y10 E0.5 F{inner_f:.1f}\n")
+        lines.append(";TYPE:Outer wall\n")
+        lines.append("G1 X10 Y10 E0.5 F12000\n")
+    return lines
+
+
 class TestSmoothZWallSpeed(unittest.TestCase):
 
     def test_parse_feedrate(self):
@@ -263,6 +277,56 @@ class TestSmoothZWallSpeed(unittest.TestCase):
         output_lines, stats = smooth_gcode_lines(lines, {"mode": "simple"})
         self.assertEqual(stats["updated_moves"], 0)
         self.assertEqual("".join(output_lines), "".join(lines))
+
+    def test_internal_wall_smoothing_opt_in(self):
+        """Inner walls are only touched when smooth_internal_walls is on.
+
+        The inner series runs separately: the fast inner moves get clamped to
+        their own smoothed target and the slow one is never raised.
+        """
+        lines = generate_inner_dip_gcode()
+
+        # Default (off): file must come out untouched.
+        out_off, _ = smooth_gcode_lines(list(lines), {"mode": "simple"})
+        self.assertEqual("".join(out_off), "".join(lines))
+
+        # Opt-in: inner moves follow the inner series, outer stays flat.
+        out_on, stats = smooth_gcode_lines(
+            list(lines), {"mode": "simple", "smooth_internal_walls": True}
+        )
+        self.assertGreater(stats["updated_moves"], 0)
+        changed = [i for i, (a, b) in enumerate(zip(lines, out_on)) if a != b]
+        self.assertTrue(changed)
+        for i in changed:
+            self.assertNotIn("TYPE:", lines[i])
+        # Slow inner layer is never raised above its own speed.
+        self.assertIn("F3000.0\n", "".join(out_on))
+        # A fast neighbour of the dip was clamped (layer 3 inner move).
+        layer_inner_move = 1 + 3 * 6 + 3
+        self.assertIn("TYPE:Inner wall", lines[layer_inner_move - 1])
+        self.assertNotEqual(out_on[layer_inner_move], lines[layer_inner_move])
+
+    def test_outer_wall_toggle(self):
+        """Outer smoothing can run alone, or be switched off entirely."""
+        lines = generate_inner_dip_gcode()
+
+        # Both wall toggles off: nothing to do.
+        out, stats = smooth_gcode_lines(
+            list(lines), {"mode": "simple", "smooth_outer_walls": False}
+        )
+        self.assertEqual(stats["skipped_reason"], "no_walls_selected")
+        self.assertEqual("".join(out), "".join(lines))
+
+        # Outer off, inner on: only inner moves change.
+        out2, stats2 = smooth_gcode_lines(
+            list(lines),
+            {"mode": "simple", "smooth_outer_walls": False, "smooth_internal_walls": True},
+        )
+        self.assertGreater(stats2["updated_moves"], 0)
+        outer_moves = [line for line in out2 if "E0.5 F12000" in line]
+        self.assertEqual(len(outer_moves), 8)
+        changed = [i for i, (a, b) in enumerate(zip(lines, out2)) if a != b]
+        self.assertTrue(all("TYPE:Inner wall" in lines[i - 1] for i in changed))
 
     def test_spiral_vase_skipped(self):
         lines = generate_synthetic_gcode(num_layers=10, spiral_vase=True)

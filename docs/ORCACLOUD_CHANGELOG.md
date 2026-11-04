@@ -1,4 +1,9 @@
 # OrcaCloud Release Changelog
+## v1.4.0 - Optional inner wall smoothing (2026-11-04)
+### Added: per wall checkboxes
+- `smooth_outer_walls` (default on) and `smooth_internal_walls` (default off) let each wall be smoothed independently. Inner walls use their own smoothing series seeded by the per-layer inner-wall maximum, so fast inner moves never weaken the outer wall target and slow inner moves are never raised.
+- Available in both config dialogs and in simple and advanced modes. Default behavior (outer wall only) is unchanged; with both toggles off the plugin leaves the file untouched.
+
 ## v1.3.2 - Algorithm aligned with Bambu Studio / Creality Print source (2026-11-03)
 ### Fixed: smoothing now matches the upstream slicers
 - The per-layer seed is the outer-wall maximum speed with overhang moves excluded (was a minimum that included overhangs), and the rewrite compares against the sampled modal feedrate along the path (was the line-local `F` with a layer-max fallback), matching `libslic3r/GCode/Smoothing.cpp` in Bambu Studio and Creality Print.
