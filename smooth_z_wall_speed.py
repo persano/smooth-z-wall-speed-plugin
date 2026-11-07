@@ -1013,8 +1013,8 @@ if orca:
   </div>
 
   <div class="callout" style="border-left-color: #f59e0b; background: rgba(245, 158, 11, 0.08);">
-    <h4>ℹ️ Why doesn't the internal 3D Preview show speed changes?</h4>
-    <p>OrcaSlicer's in-memory 3D viewer renders raw toolpaths directly from the slicer core before post-processing. Slicing pipeline plugins run at <code>psGCodePostProcess</code> to safely modify the exported G-code on disk without causing memory sharing locks. When you click <b>Export G-code file</b> or print, the outer wall speeds are smoothly relaxed!</p>
+    <h4>ℹ️ Seeing the smoothing</h4>
+    <p>After slicing, set the preview legend to <b>Speed</b>. Outer wall speeds change gradually along Z instead of in sharp steps. The same speeds are written to the exported G-code.</p>
   </div>
 
   <div class="card">

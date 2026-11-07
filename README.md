@@ -113,8 +113,8 @@ This plugin registers an interactive top-level tab in OrcaSlicer named **`Smooth
 4. Slice and export/print.
 
 > [!NOTE]
-> **Why doesn't the 3D Viewport Speed preview change?**
-> OrcaSlicer's in-memory 3D preview renders raw toolpaths immediately upon slicing before post-processing. Slicing pipeline plugins run at `psGCodePostProcess` to safely modify the final G-code file on disk during **Export G-code file** or **Print**. To inspect the smoothed outer wall speeds, open the exported `.gcode` file in any viewer or check outer wall `F...` feedrates.
+> **Is the smoothing visible in the preview?**
+> Yes. After slicing, switch the preview legend to **Speed**: the outer wall speeds show the continuous Z ramp instead of sharp steps. The plugin runs at `psGCodePostProcess` and the preview shows its result. It is also in the exported `.gcode` (outer wall `F...` feedrates).
 
 ---
 
