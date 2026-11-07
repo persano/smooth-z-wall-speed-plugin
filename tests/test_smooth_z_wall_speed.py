@@ -23,6 +23,7 @@ from smooth_z_wall_speed import (
     merged_capability_config,
     store_capability_config,
     set_pipeline_capability,
+    update_time_estimates,
 )
 
 
@@ -430,6 +431,26 @@ class TestSmoothZWallSpeed(unittest.TestCase):
             self.assertEqual(merged["enabled"], DEFAULT_CONFIG["enabled"])
         finally:
             set_pipeline_capability(None)
+
+class TimeEstimateTests(unittest.TestCase):
+    def test_slower_speed_raises_header_and_m73(self):
+        old = ["; model printing time: 1m 0s; total estimated time: 2m 0s\n", "M73 P0 R2\n",
+               "G1 X0 Y0 F6000\n", "G1 X6000 Y0 E1 F6000\n", "M73 P50 R1\n", "G1 X6000 Y600 E1\n", "M73 P100 R0\n"]
+        new = list(old)
+        new[3] = "G1 X6000 Y0 E1 F3000\n"  # F3000 stays modal, so both moves run at half speed
+        total = update_time_estimates(old, new)
+        # F6000 is 100 mm/s: 6000 mm and 600 mm take 66 s, and twice that at F3000
+        self.assertAlmostEqual(total, 66.0, places=3)
+        self.assertEqual(new[0], "; model printing time: 2m 6s; total estimated time: 3m 6s\n")
+        self.assertEqual(new[1], "M73 P0 R3\n")
+        self.assertEqual(new[4], "M73 P50 R1\n")
+        self.assertEqual(new[6], "M73 P100 R0\n")
+
+    def test_no_speed_change_leaves_lines_alone(self):
+        old = ["; model printing time: 1m 0s; total estimated time: 2m 0s\n", "G1 X10 Y0 E1 F6000\n"]
+        new = list(old)
+        self.assertEqual(update_time_estimates(old, new), 0.0)
+        self.assertEqual(new, old)
 
 
 if __name__ == "__main__":

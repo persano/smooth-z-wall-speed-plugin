@@ -79,6 +79,11 @@ RE_G_CMD        = re.compile(r"^([Gg][0123])(\s+[^;\n]*)?")
 RE_FEEDRATE     = re.compile(r"([Ff])([0-9.]+)")
 RE_EXTRUSION    = re.compile(r"([Ee])([0-9.-]+)")
 
+RE_M73 = re.compile(r"^(M73\s+P\d+\s+R)(\d+)")
+RE_TIME_HEADER = re.compile(
+    r"^(;\s*model printing time:\s*)([0-9hms ]+?)(;\s*total estimated time:\s*)([0-9hms ]+?)\s*$")
+RE_XYF = re.compile(r"([XYF])(-?[0-9.]+)")
+
 # Loaded slicing capability, used to share the Orca capability config store
 # between the preset/global config dialog and the "Smooth Z Speed" tab.
 _pipeline_capability: Any = None
@@ -490,6 +495,66 @@ def smooth_gcode_lines(
     return output_lines, stats
 
 
+def move_seconds(lines: List[str]) -> List[float]:
+    """Seconds each line takes at its modal feedrate (length / feed). Only the difference is used."""
+    out: List[float] = []
+    x = y = 0.0
+    feed = 6000.0
+    for line in lines:
+        seconds = 0.0
+        if RE_G_CMD.match(line):
+            words = {k: float(v) for k, v in RE_XYF.findall(line.split(";")[0])}
+            feed = words.get("F", feed)
+            nx, ny = words.get("X", x), words.get("Y", y)
+            # shortcut: G2/G3 arcs count as their chord, close enough for a time difference
+            if feed > 0:
+                seconds = math.hypot(nx - x, ny - y) / (feed / 60.0)
+            x, y = nx, ny
+        out.append(seconds)
+    return out
+
+
+def format_duration(seconds: float) -> str:
+    seconds = max(0, int(round(seconds)))
+    h, rest = divmod(seconds, 3600)
+    m, sec = divmod(rest, 60)
+    return (f"{h}h " if h else "") + (f"{m}m " if h or m else "") + f"{sec}s"
+
+
+def parse_duration(text: str) -> float:
+    units = {"h": 3600, "m": 60, "s": 1}
+    return float(sum(int(n) * units[u] for n, u in re.findall(r"(\d+)([hms])", text)))
+
+
+def update_time_estimates(old_lines: List[str], new_lines: List[str]) -> float:
+    """Shift M73 remaining-time lines and the header estimate by the time the new speeds add or remove.
+
+    Edits new_lines in place and returns the total change in seconds. Orca made its
+    estimate before post-processing and the plugin docs do not say it is redone, so
+    without this the printer screen and the file header keep the unsmoothed time.
+    """
+    delta = [b - a for a, b in zip(move_seconds(old_lines), move_seconds(new_lines))]
+    total = sum(delta)
+    if abs(total) < 0.5:
+        return 0.0
+    after = 0.0  # change still to come after the current line
+    for i in range(len(new_lines) - 1, -1, -1):
+        match = RE_M73.match(new_lines[i])
+        if match:
+            minutes = max(0, round(int(match.group(2)) + after / 60.0))
+            new_lines[i] = f"{match.group(1)}{minutes}" + new_lines[i][match.end():]
+        after += delta[i]
+    for i, line in enumerate(new_lines[:300]):
+        body = line.rstrip("\r\n")
+        match = RE_TIME_HEADER.match(body)
+        if match:
+            model = format_duration(parse_duration(match.group(2)) + total)
+            whole = format_duration(parse_duration(match.group(4)) + total)
+            new_lines[i] = f"{match.group(1)}{model}{match.group(3)}{whole}" + line[len(body):]
+            break
+    return total
+
+
 def smooth_gcode_file(
     input_path: str,
     output_path: Optional[str] = None,
@@ -501,6 +566,7 @@ def smooth_gcode_file(
         lines = f.readlines()
 
     modified_lines, stats = smooth_gcode_lines(lines, config)
+    stats["time_change_s"] = update_time_estimates(lines, modified_lines) if stats["updated_moves"] else 0.0
 
     with open(target_path, "w", encoding="utf-8") as f:
         f.writelines(modified_lines)
@@ -1317,7 +1383,8 @@ applyConfigToUI(currentConfig);
                 msg = (
                     f"{PLUGIN_NAME} [{stats['mode'].upper()}]: processed {stats['total_layers']} layers, "
                     f"smoothed {stats['smoothed_layers']} layers ({stats['updated_moves']} moves modified) "
-                    f"via {stats['algorithm']} (converged in {stats.get('steps_converged', 0)} steps)"
+                    f"via {stats['algorithm']} (converged in {stats.get('steps_converged', 0)} steps), "
+                    f"print time {stats['time_change_s']:+.0f} s"
                 )
                 return orca.ExecutionResult.success(msg)
             except Exception as e:
