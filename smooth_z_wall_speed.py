@@ -5,7 +5,7 @@
 # name = "Smoothing Wall Speed Along Z"
 # description = "Smooths outer wall speed transitions across adjacent Z layers. Features Simple (1:1 Bambu/Creality) and Advanced modes with interactive UI tab."
 # author = "persano"
-# version = "1.4.0"
+# version = "1.4.1"
 # ///
 """Smoothing Wall Speed Along Z Plugin for OrcaSlicer.
 
@@ -34,7 +34,7 @@ except ImportError:
     orca = None
 
 PLUGIN_NAME = "Smoothing Wall Speed Along Z"
-PLUGIN_VERSION = "1.4.0"
+PLUGIN_VERSION = "1.4.1"
 
 # Bambu Studio & Creality Print exact defaults (libslic3r/GCode/Smoothing.cpp)
 BAMBU_CREALITY_DEFAULTS = {

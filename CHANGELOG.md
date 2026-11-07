@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] - 2026-11-06
+
+### Changed
+- After smoothing, the plugin shifts the `M73 ... R` remaining-time lines and the `model printing time / total estimated time` header by the time the new speeds add or remove (estimated from move length and feed rate; arcs count as chords). Orca's estimate is made before post-processing.
+
+### Fixed
+- README and the in-app page no longer claim the Speed preview does not show the smoothing; it does.
+
 ## [1.4.0] - 2026-11-04
 
 ### Added
